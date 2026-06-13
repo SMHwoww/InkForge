@@ -96,4 +96,4 @@ NODE_ENV=production node api/server.ts
 
 ## License
 
-Private
+MIT
