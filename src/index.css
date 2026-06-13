@@ -1,0 +1,357 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Noto Serif SC', 'PingFang SC', 'Microsoft YaHei', serif;
+  line-height: 1.6;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2d4a3e transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: #2d4a3e;
+  border-radius: 3px;
+}
+
+body {
+  margin: 0;
+  background-color: #0f0f1a;
+  color: #f5f0e8;
+}
+
+/* ReactFlow overrides */
+.react-flow__node {
+  font-family: 'Noto Serif SC', serif;
+}
+
+.react-flow__edge-path {
+  stroke-width: 2;
+}
+
+.react-flow__controls-button {
+  background-color: #1a1a2e !important;
+  border-color: #c9a96e20 !important;
+  color: #f5f0e8 !important;
+  fill: #f5f0e8 !important;
+}
+
+.react-flow__controls-button:hover {
+  background-color: #2d4a3e !important;
+}
+
+.react-flow__attribution {
+  display: none !important;
+}
+
+/* Selection */
+::selection {
+  background-color: #c9a96e30;
+  color: #f5f0e8;
+}
+
+/* Tiptap Editor Styles */
+.tiptap.ProseMirror {
+  outline: none;
+  min-height: 400px;
+  padding: 2rem 3rem;
+  font-size: 16px;
+  line-height: 1.8;
+}
+
+.tiptap.ProseMirror p.is-editor-empty:first-child::before {
+  color: #f5f0e840;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+.tiptap.ProseMirror h1 {
+  font-size: 2em;
+  font-weight: 700;
+  margin: 0.5em 0;
+  color: #f5f0e8;
+  border-bottom: 1px solid #c9a96e20;
+  padding-bottom: 0.3em;
+}
+
+.tiptap.ProseMirror h2 {
+  font-size: 1.5em;
+  font-weight: 600;
+  margin: 0.5em 0;
+  color: #f5f0e8;
+}
+
+.tiptap.ProseMirror h3 {
+  font-size: 1.25em;
+  font-weight: 600;
+  margin: 0.5em 0;
+  color: #f5f0e8d0;
+}
+
+.tiptap.ProseMirror p {
+  margin: 0.5em 0;
+}
+
+.tiptap.ProseMirror ul,
+.tiptap.ProseMirror ol {
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+}
+
+.tiptap.ProseMirror li {
+  margin: 0.25em 0;
+}
+
+.tiptap.ProseMirror blockquote {
+  border-left: 3px solid #c9a96e40;
+  padding-left: 1em;
+  margin: 0.5em 0;
+  color: #f5f0e860;
+  font-style: italic;
+}
+
+.tiptap.ProseMirror code {
+  background: #c9a96e15;
+  color: #c9a96e;
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.tiptap.ProseMirror pre {
+  background: #1a1a2e;
+  border: 1px solid #c9a96e15;
+  border-radius: 8px;
+  padding: 1em;
+  margin: 0.5em 0;
+  overflow-x: auto;
+}
+
+.tiptap.ProseMirror pre code {
+  background: none;
+  color: #f5f0e8;
+  padding: 0;
+}
+
+.tiptap.ProseMirror hr {
+  border: none;
+  border-top: 1px solid #c9a96e15;
+  margin: 1.5em 0;
+}
+
+.tiptap.ProseMirror strong {
+  color: #f5f0e8;
+  font-weight: 700;
+}
+
+.tiptap.ProseMirror em {
+  font-style: italic;
+}
+
+/* Reference Mention Styles */
+.reference-mention {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 4px;
+  margin: 0 1px;
+  border-radius: 4px;
+  font-size: 0.95em;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.15s;
+  border-bottom: 1.5px dashed;
+}
+
+.reference-mention[data-type="character"] {
+  color: #c9a96e;
+  background: #c9a96e12;
+  border-color: #c9a96e50;
+}
+
+.reference-mention[data-type="location"] {
+  color: #7ec8a0;
+  background: #7ec8a012;
+  border-color: #7ec8a050;
+}
+
+.reference-mention[data-type="event"] {
+  color: #e8738a;
+  background: #e8738a12;
+  border-color: #e8738a50;
+}
+
+.reference-mention[data-type="faction"] {
+  color: #7ea8c8;
+  background: #7ea8c812;
+  border-color: #7ea8c850;
+}
+
+.reference-mention[data-type="item"] {
+  color: #c8a07e;
+  background: #c8a07e12;
+  border-color: #c8a07e50;
+}
+
+.reference-mention[data-type="concept"] {
+  color: #a07ec8;
+  background: #a07ec812;
+  border-color: #a07ec850;
+}
+
+.reference-mention:hover {
+  filter: brightness(1.2);
+}
+
+.reference-mention::before {
+  content: '@';
+  font-size: 0.85em;
+  opacity: 0.6;
+  margin-right: 1px;
+}
+
+/* Mention popup */
+.mention-popup-container {
+  position: fixed;
+  z-index: 9999;
+}
+
+/* Star Chart Styles */
+@keyframes star-twinkle {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.8);
+  }
+}
+
+@keyframes node-float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+.star-node {
+  position: relative;
+  animation: node-float 3s ease-in-out infinite;
+}
+
+.star-node:nth-child(odd) {
+  animation-delay: 1.5s;
+}
+
+.star-node-glow {
+  pointer-events: none;
+}
+
+/* Markdown rendered content in AI chat */
+.prose-aido h1,
+.prose-aido h2,
+.prose-aido h3,
+.prose-aido h4 {
+  color: #f5f0e8;
+  font-weight: 600;
+  margin: 0.75em 0 0.5em;
+}
+
+.prose-aido h1 { font-size: 1.4em; }
+.prose-aido h2 { font-size: 1.2em; }
+.prose-aido h3 { font-size: 1.1em; }
+
+.prose-aido p {
+  margin: 0.4em 0;
+}
+
+.prose-aido ul,
+.prose-aido ol {
+  padding-left: 1.5em;
+  margin: 0.4em 0;
+}
+
+.prose-aido li {
+  margin: 0.15em 0;
+}
+
+.prose-aido code {
+  background: #c9a96e10;
+  color: #c9a96e;
+  padding: 0.15em 0.4em;
+  border-radius: 3px;
+  font-size: 0.85em;
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.prose-aido pre {
+  background: #080812;
+  border: 1px solid #c9a96e15;
+  border-radius: 8px;
+  padding: 0.75em 1em;
+  margin: 0.5em 0;
+  overflow-x: auto;
+}
+
+.prose-aido pre code {
+  background: none;
+  color: #f5f0e8cc;
+  padding: 0;
+  font-size: 0.8em;
+}
+
+.prose-aido blockquote {
+  border-left: 3px solid #c9a96e30;
+  padding-left: 1em;
+  margin: 0.5em 0;
+  color: #f5f0e860;
+  font-style: italic;
+}
+
+.prose-aido hr {
+  border: none;
+  border-top: 1px solid #c9a96e10;
+  margin: 1em 0;
+}
+
+.prose-aido strong {
+  color: #f5f0e8;
+  font-weight: 700;
+}
+
+.prose-aido a {
+  color: #c9a96e;
+  text-decoration: underline;
+  opacity: 0.8;
+  transition: opacity 0.15s;
+}
+
+.prose-aido a:hover {
+  opacity: 1;
+}
