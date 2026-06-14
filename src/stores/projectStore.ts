@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Project, Character, CharacterListItem, WorldbuildingItem, Chapter, OutlineItem } from '@/types';
+import type { Project, Character, CharacterListItem, WorldbuildingItem, Chapter, OutlineItem, TimelineEvent, TimelinePerspective } from '@/types';
 import { api } from '@/api/client';
 
 interface ProjectState {
@@ -10,6 +10,8 @@ interface ProjectState {
   worldbuilding: WorldbuildingItem[];
   chapters: Chapter[];
   outlines: OutlineItem[];
+  timelineEvents: TimelineEvent[];
+  timelinePerspectives: TimelinePerspective[];
   loading: boolean;
   // projects
   fetchProjects: () => Promise<void>;
@@ -38,6 +40,20 @@ interface ProjectState {
   createOutline: (projectId: number, data: { title: string; description?: string; parentId?: number | null; chapterId?: number | null; level?: number }) => Promise<OutlineItem>;
   updateOutline: (projectId: number, itemId: number, data: any) => Promise<void>;
   deleteOutline: (projectId: number, itemId: number) => Promise<void>;
+  // timeline
+  fetchTimeline: (projectId: number) => Promise<void>;
+  createTimelineEvent: (projectId: number, data: { title: string; content?: string; eventDate?: string; sortOrder?: number; category?: string; placed?: number; posX?: number; posY?: number }) => Promise<TimelineEvent>;
+  updateTimelineEvent: (projectId: number, eventId: number, data: any) => Promise<void>;
+  deleteTimelineEvent: (projectId: number, eventId: number) => Promise<void>;
+  // timeline perspectives
+  fetchPerspectives: (projectId: number) => Promise<void>;
+  createPerspective: (projectId: number, data: { name: string }) => Promise<TimelinePerspective>;
+  updatePerspective: (projectId: number, perspectiveId: number, data: any) => Promise<void>;
+  deletePerspective: (projectId: number, perspectiveId: number) => Promise<void>;
+  // timeline config
+  xLabels: string[];
+  fetchTimelineConfig: (projectId: number) => Promise<void>;
+  updateTimelineConfig: (projectId: number, data: { xLabels: string[] }) => Promise<void>;
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
@@ -48,6 +64,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   worldbuilding: [],
   chapters: [],
   outlines: [],
+  timelineEvents: [],
+  timelinePerspectives: [],
+  xLabels: [],
   loading: false,
 
   fetchProjects: async () => {
@@ -181,5 +200,65 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   deleteOutline: async (projectId, itemId) => {
     await api.deleteOutline(projectId, itemId);
     await get().fetchOutlines(projectId);
+  },
+
+  fetchTimeline: async (projectId) => {
+    const timelineEvents = await api.getTimeline(projectId);
+    set({ timelineEvents });
+  },
+
+  createTimelineEvent: async (projectId, data) => {
+    const event = await api.createTimelineEvent(projectId, data);
+    if (!event) throw new Error('创建时间轴事件失败');
+    set({ timelineEvents: [...get().timelineEvents, event] });
+    return event;
+  },
+
+  updateTimelineEvent: async (projectId, eventId, data) => {
+    const event = await api.updateTimelineEvent(projectId, eventId, data);
+    set({ timelineEvents: get().timelineEvents.map(e => e.id === eventId ? event : e) });
+  },
+
+  deleteTimelineEvent: async (projectId, eventId) => {
+    await api.deleteTimelineEvent(projectId, eventId);
+    set({ timelineEvents: get().timelineEvents.filter(e => e.id !== eventId) });
+  },
+
+  fetchPerspectives: async (projectId) => {
+    const timelinePerspectives = await api.getPerspectives(projectId);
+    set({ timelinePerspectives });
+  },
+
+  createPerspective: async (projectId, data) => {
+    const perspective = await api.createPerspective(projectId, data);
+    if (!perspective) throw new Error('创建视角失败');
+    set({ timelinePerspectives: [...get().timelinePerspectives, perspective] });
+    return perspective;
+  },
+
+  updatePerspective: async (projectId, perspectiveId, data) => {
+    const perspective = await api.updatePerspective(projectId, perspectiveId, data);
+    set({ timelinePerspectives: get().timelinePerspectives.map(p => p.id === perspectiveId ? perspective : p) });
+  },
+
+  deletePerspective: async (projectId, perspectiveId) => {
+    await api.deletePerspective(projectId, perspectiveId);
+    set({
+      timelinePerspectives: get().timelinePerspectives.filter(p => p.id !== perspectiveId),
+      // 同步前端状态：撤销该视角上所有已放置事件
+      timelineEvents: get().timelineEvents.map(e =>
+        e.posY === perspectiveId ? { ...e, placed: 0, posX: null, posY: null } : e
+      ),
+    });
+  },
+
+  fetchTimelineConfig: async (projectId) => {
+    const config = await api.getTimelineConfig(projectId);
+    if (config) set({ xLabels: config.xLabels });
+  },
+
+  updateTimelineConfig: async (projectId, data) => {
+    const config = await api.updateTimelineConfig(projectId, data);
+    if (config) set({ xLabels: config.xLabels });
   },
 }));

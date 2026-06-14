@@ -1,14 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { useProjectStore } from '@/stores/projectStore';
+import { useToastStore } from '@/stores/toastStore';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
+import AIPanel from '@/components/ai/AIPanel';
 import type { OutlineItem } from '@/types';
 import {
   Plus, Trash2, ChevronDown, ChevronRight, GripVertical,
   ListTree, Edit3, CheckCircle, Circle, Clock, Save,
-  ArrowUp, ArrowDown, ArrowRight, MoveHorizontal,
+  ArrowUp, ArrowDown, ArrowRight, MoveHorizontal, Sparkles,
 } from 'lucide-react';
 
 export default function OutlineEditor() {
@@ -19,6 +21,7 @@ export default function OutlineEditor() {
     fetchOutlines, createOutline, updateOutline, deleteOutline,
     fetchChapters,
   } = useProjectStore();
+  const addToast = useToastStore(s => s.addToast);
 
   const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
   const [editingItem, setEditingItem] = useState<number | null>(null);
@@ -26,6 +29,7 @@ export default function OutlineEditor() {
   const [showCreate, setShowCreate] = useState(false);
   const [newForm, setNewForm] = useState({ title: '', description: '', parentId: null as number | null, level: 0 });
   const [saving, setSaving] = useState(false);
+  const [showAI, setShowAI] = useState(false);
 
   useEffect(() => {
     if (projectId) {
@@ -71,8 +75,9 @@ export default function OutlineEditor() {
       });
       setShowCreate(false);
       setNewForm({ title: '', description: '', parentId: null, level: 0 });
-    } catch (e) {
-      console.error('创建大纲失败:', e);
+      addToast('大纲条目创建成功');
+    } catch (e: any) {
+      addToast(e.message || '创建大纲失败', 'error');
     }
     setSaving(false);
   };
@@ -92,6 +97,7 @@ export default function OutlineEditor() {
   const handleDelete = async (itemId: number) => {
     if (!confirm('确定要删除此大纲条目吗？子条目也会被取消嵌套。')) return;
     await deleteOutline(projectId, itemId);
+    addToast('大纲条目已删除');
   };
 
   const handleStatusToggle = async (item: OutlineItem) => {
@@ -254,6 +260,22 @@ export default function OutlineEditor() {
 
   const flatItems = getFlatItems(outlines);
 
+  // Build context prompt for AI
+  const outlineContext = useMemo(() => {
+    const lines = ['以下是大纲数据。你应当直接使用[OUTLINE|||...]指令来回复，放在回复末尾。'];
+    lines.push(`共有 ${flatItems.length} 个大纲条目：`);
+    for (const item of flatItems) {
+      lines.push(`- ${'  '.repeat(item.level)}${item.title}`);
+    }
+    return lines.join('\n');
+  }, [flatItems]);
+
+  const handleAIdoAction = async (action: { type: string; action: string; title: string; content: string }) => {
+    if (action.type === 'outline') {
+      await createOutline(projectId, { title: action.title, description: action.content, level: 0, parentId: null });
+    }
+  };
+
   return (
     <div className="h-full flex flex-col">
       {/* Toolbar */}
@@ -265,6 +287,9 @@ export default function OutlineEditor() {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setShowAI(!showAI)} className={showAI ? 'text-[#c9a96e]' : ''}>
+            <Sparkles size={14} /> {showAI ? '关闭AI' : 'AI助手'}
+          </Button>
           <Button variant="secondary" size="sm" onClick={() => {
             setNewForm({ title: '', description: '', parentId: null, level: 0 });
             setShowCreate(true);
@@ -283,8 +308,9 @@ export default function OutlineEditor() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 bg-[#0f0f1a]">
-        {outlines.length === 0 ? (
+      <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 overflow-y-auto p-4 bg-[#0f0f1a]">
+          {outlines.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
               <ListTree size={48} className="text-[#f5f0e8]/10 mx-auto mb-4" />
@@ -307,6 +333,16 @@ export default function OutlineEditor() {
           <div className="max-w-3xl mx-auto">
             {outlines.map(item => renderOutlineItem(item))}
           </div>
+        )}
+      </div>
+        {showAI && (
+          <AIPanel
+            projectId={projectId}
+            contextPrompt={outlineContext}
+            title="大纲AI助手"
+            onAIdoAction={handleAIdoAction}
+            onClose={() => setShowAI(false)}
+          />
         )}
       </div>
 

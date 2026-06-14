@@ -138,3 +138,30 @@ export interface StarChartData {
   nodes: StarMapNode[];
   edges: StarMapEdge[];
 }
+
+// Timeline types
+export interface TimelineEvent {
+  id: number;
+  projectId: number;
+  title: string;
+  content: string;
+  eventDate: string;
+  sortOrder: number;
+  category: string;
+  placed: number;
+  posX: number | null;
+  posY: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TimelinePerspective {
+  id: number;
+  projectId: number;
+  name: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const TimelineCategories = ['重大事件', '角色事件', '世界事件', '章节事件', '其他'] as const;

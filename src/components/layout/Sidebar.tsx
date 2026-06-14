@@ -11,6 +11,7 @@ import {
   PenLine,
   ListTree,
   Stars,
+  Timer,
 } from 'lucide-react';
 import { useState } from 'react';
 import { clsx } from 'clsx';
@@ -71,16 +72,6 @@ export function Sidebar({ onNewProject }: SidebarProps) {
             <div className={clsx('my-3 border-t border-[#c9a96e]/8', collapsed && 'mx-2')} />
             {!collapsed && <p className="px-3 text-xs text-[#f5f0e8]/30 uppercase tracking-wider mb-1">项目模块</p>}
 
-            <NavLink to={`/projects/${projectId}/characters`} className={linkClass}>
-              <Users size={18} />
-              {!collapsed && <span>角色管理</span>}
-            </NavLink>
-
-            <NavLink to={`/projects/${projectId}/worldbuilding`} className={linkClass}>
-              <Globe size={18} />
-              {!collapsed && <span>世界观</span>}
-            </NavLink>
-
             <NavLink to={`/projects/${projectId}/ai-assistant`} className={linkClass}>
               <Sparkles size={18} />
               {!collapsed && <span>AI助手</span>}
@@ -93,12 +84,27 @@ export function Sidebar({ onNewProject }: SidebarProps) {
 
             <NavLink to={`/projects/${projectId}/outlines`} className={linkClass}>
               <ListTree size={18} />
-              {!collapsed && <span>大纲编辑器</span>}
+              {!collapsed && <span>大纲</span>}
+            </NavLink>
+
+            <NavLink to={`/projects/${projectId}/characters`} className={linkClass}>
+              <Users size={18} />
+              {!collapsed && <span>角色</span>}
             </NavLink>
 
             <NavLink to={`/projects/${projectId}/starchart`} className={linkClass}>
               <Stars size={18} />
               {!collapsed && <span>星图</span>}
+            </NavLink>
+
+            <NavLink to={`/projects/${projectId}/worldbuilding`} className={linkClass}>
+              <Globe size={18} />
+              {!collapsed && <span>世界观</span>}
+            </NavLink>
+
+            <NavLink to={`/projects/${projectId}/timeline`} className={linkClass}>
+              <Timer size={18} />
+              {!collapsed && <span>时间轴</span>}
             </NavLink>
           </>
         )}

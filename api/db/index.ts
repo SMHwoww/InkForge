@@ -143,6 +143,47 @@ export async function initDatabase() {
     );
 
     CREATE INDEX IF NOT EXISTS idx_star_edges_project ON star_map_edges(project_id);
+
+    CREATE TABLE IF NOT EXISTS timeline_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      content TEXT DEFAULT '',
+      event_date TEXT DEFAULT '',
+      sort_order INTEGER DEFAULT 0,
+      category TEXT DEFAULT '',
+      placed INTEGER DEFAULT 0,
+      pos_x INTEGER,
+      pos_y INTEGER,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_timeline_project ON timeline_events(project_id);
+    CREATE INDEX IF NOT EXISTS idx_timeline_sort ON timeline_events(project_id, sort_order);
+
+    CREATE TABLE IF NOT EXISTS timeline_perspectives (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      sort_order INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_perspective_project ON timeline_perspectives(project_id);
+
+    CREATE TABLE IF NOT EXISTS timeline_config (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL UNIQUE REFERENCES projects(id) ON DELETE CASCADE,
+      x_labels TEXT NOT NULL
+    );
   `);
+
+  // Migration: add columns to existing timeline_events table
+  try { database.run('ALTER TABLE timeline_events ADD COLUMN placed INTEGER DEFAULT 0'); } catch (_) {}
+  try { database.run('ALTER TABLE timeline_events ADD COLUMN pos_x INTEGER'); } catch (_) {}
+  try { database.run('ALTER TABLE timeline_events ADD COLUMN pos_y INTEGER'); } catch (_) {}
+
   saveDb();
 }

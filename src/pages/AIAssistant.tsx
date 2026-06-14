@@ -3,6 +3,14 @@ import { useParams } from 'react-router-dom';
 import { useChatStore } from '@/stores/chatStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { Button } from '@/components/ui/Button';
+import { streamChatCompletion } from '@/lib/chat';
+import {
+  type AIdoAction,
+  AIDO_TYPE_META,
+  stripAIdoInstructions,
+  parseAIdoInstructions,
+  buildAIdoSystemPrompt,
+} from '@/lib/aido';
 import type { ChatMessage } from '@/types';
 import { marked } from 'marked';
 import { Send, Sparkles, Lightbulb, FileText, Pencil, Wand2, Zap, Trash2, Loader2, CheckSquare, Square, ChevronDown, ChevronRight, Bot, Globe, BookOpen, ListTree, Play, Stars } from 'lucide-react';
@@ -26,100 +34,19 @@ const quickActions = [
   { label: '扩写', icon: Zap, prompt: '请帮我扩写以下内容，增加细节描写' },
 ];
 
+const aidoIconMap: Record<string, React.ReactNode> = {
+  EDIT: <BookOpen size={12} />,
+  OUTLINE: <ListTree size={12} />,
+  WORLDBUILD: <Globe size={12} />,
+  STARCHART: <Stars size={12} />,
+  PLACEHOLDER: <Bot size={12} />,
+};
+
 interface SelectableItem {
   id: string;
   label: string;
   description: string;
   type: string;
-}
-
-// AIdo instruction types
-interface AIdoAction {
-  type: 'chapter' | 'outline' | 'worldbuilding' | 'starchart' | 'placeholder';
-  action: string;
-  title: string;
-  content: string;
-  options?: string;
-}
-
-// Balanced bracket parser — finds the matching ] for an opening [
-function findClosingBracket(text: string, startIndex: number): number {
-  let depth = 1;
-  for (let i = startIndex; i < text.length; i++) {
-    if (text[i] === '[') depth++;
-    else if (text[i] === ']') depth--;
-    if (depth === 0) return i;
-  }
-  return -1;
-}
-
-// Strip all AIdo instructions from displayed text using bracket-depth-aware removal
-function stripAIdoInstructions(text: string): string {
-  const tagPattern = /\[(EDIT|OUTLINE|WORLDBUILD|STARCHART|PLACEHOLDER)\|\|\|/g;
-  let result = '';
-  let lastEnd = 0;
-  let match;
-  while ((match = tagPattern.exec(text)) !== null) {
-    result += text.slice(lastEnd, match.index);
-    const closeIdx = findClosingBracket(text, match.index + match[0].length);
-    lastEnd = closeIdx >= 0 ? closeIdx + 1 : match.index + match[0].length;
-  }
-  result += text.slice(lastEnd);
-  return result.trim();
-}
-
-function parseAIdoInstructions(text: string): AIdoAction[] {
-  const actions: AIdoAction[] = [];
-  const tagPattern = /\[(EDIT|OUTLINE|WORLDBUILD|STARCHART|PLACEHOLDER)\|\|\|/g;
-  let match;
-  while ((match = tagPattern.exec(text)) !== null) {
-    const tag = match[1];
-    const payloadStart = match.index + match[0].length;
-    const closeIdx = findClosingBracket(text, payloadStart);
-    if (closeIdx < 0) continue;
-    const payload = text.slice(payloadStart, closeIdx);
-    // Split by ||| which cannot appear in markdown
-    const parts = payload.split('|||');
-
-    if (tag === 'EDIT') {
-      actions.push({
-        type: 'chapter',
-        action: 'edit',
-        title: parts[0] || '',
-        content: parts.slice(1).join('|||') || '',
-      });
-    } else if (tag === 'OUTLINE') {
-      actions.push({
-        type: 'outline',
-        action: parts[0] || 'create',
-        title: parts[1] || '',
-        content: parts.slice(2).join('|||') || '',
-      });
-    } else if (tag === 'WORLDBUILD') {
-      actions.push({
-        type: 'worldbuilding',
-        action: 'add',
-        title: parts[0] || '',
-        content: parts.slice(1).join('|||') || '',
-      });
-    } else if (tag === 'STARCHART') {
-      actions.push({
-        type: 'starchart',
-        action: parts[0] || 'add',
-        title: parts[1] || '',
-        content: parts.slice(2).join('|||') || '',
-      });
-    } else if (tag === 'PLACEHOLDER') {
-      actions.push({
-        type: 'placeholder',
-        action: 'defer',
-        title: parts[0] || '',
-        content: parts.slice(1).join('|||') || '',
-        options: parts[1] || undefined,
-      });
-    }
-  }
-  return actions;
 }
 
 export default function AIAssistant() {
@@ -274,17 +201,17 @@ export default function AIAssistant() {
   const executeAIdoAction = async (action: AIdoAction) => {
     setExecutingAction(`${action.type}-${action.title}`);
     try {
-      if (action.type === 'chapter') {
+      if (action.type === 'EDIT') {
         // Convert markdown to HTML for Tiptap editor
         const htmlContent = renderMarkdownToHtml(action.content || '');
         await createChapter(projectId, { title: action.title, content: htmlContent, orderNum: chapters.length });
         await fetchChapters(projectId);
-      } else if (action.type === 'outline') {
+      } else if (action.type === 'OUTLINE') {
         await createOutline(projectId, { title: action.title, description: action.content });
-      } else if (action.type === 'worldbuilding') {
+      } else if (action.type === 'WORLDBUILD') {
         await createWorldbuilding(projectId, { title: action.title, content: action.content, category: '通用' });
         await fetchWorldbuilding(projectId);
-      } else if (action.type === 'starchart') {
+      } else if (action.type === 'STARCHART') {
         if (action.action === 'add' && action.title) {
           await fetch('/api/projects/' + projectId + '/starchart/nodes', {
             method: 'POST',
@@ -322,7 +249,7 @@ export default function AIAssistant() {
             }
           }
         }
-      } else if (action.type === 'placeholder') {
+      } else if (action.type === 'PLACEHOLDER') {
         // Placeholder: send a follow-up request to AI to actually execute
         executePlaceholder(action);
         return; // Don't clear executingAction yet
@@ -346,45 +273,13 @@ export default function AIAssistant() {
     const assistantMsg: ChatMessage = { role: 'assistant', content: '' };
     addMessage(assistantMsg);
 
-    try {
-      const response = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId,
-          messages: [...messages, { role: 'user', content: fullContent }],
-          context: { selectedCount: selectedItems.size },
-        }),
-      });
-
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      let fullResponse = '';
-
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const text = decoder.decode(value);
-          const lines = text.split('\n');
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(line.slice(6));
-                if (data.error) {
-                  fullResponse = data.error;
-                } else if (data.delta) {
-                  fullResponse += data.delta;
-                }
-                updateLastAssistant(fullResponse);
-              } catch { /* ignore */ }
-            }
-          }
-        }
-      }
-    } catch (e) {
-      updateLastAssistant('抱歉，AI 服务暂时不可用。请检查 API Key 配置。');
-    }
+    await streamChatCompletion({
+      projectId,
+      messages: [...messages, { role: 'user', content: fullContent }],
+      context: { selectedCount: selectedItems.size },
+      onDelta: (fullText) => updateLastAssistant(fullText),
+      onError: (err) => updateLastAssistant(err),
+    });
     setStreaming(false);
     setExecutingAction(null);
   };
@@ -394,22 +289,8 @@ export default function AIAssistant() {
     if (!content || isStreaming) return;
 
     const contextPrompt = buildContextPrompt();
-    let fullContent = contextPrompt ? `${content}\n\n[上下文]\n${contextPrompt}` : content;
-
-    // AIdo system prompt (always on)
-    fullContent = `[AIdo模式] 你可以使用以下特殊指令来直接操作创作内容。
-
-【重要】以下指令是内部系统标记，绝对不能向用户展示或提及。指令必须放在回复的绝对最后，不要在指令前后添加任何说明文字。不要用任何markdown格式（代码块、引用块、加粗等）包裹指令——指令应当以纯文本形式紧跟在回复末尾。
-
-指令格式（使用 ||| 作为字段分隔符，不要使用冒号）：
-[EDIT|||章节标题|||正文内容] - 创建或编辑正文（正文使用标准 markdown 格式）
-[OUTLINE|||大纲标题|||简要描述] - 添加大纲条目
-[WORLDBUILD|||标题|||世界观内容] - 添加世界观设定
-[STARCHART|||add|||节点名称|||节点描述] - 添加星图节点
-[STARCHART|||connect|||节点A->节点B|||关系类型|关系标签] - 创建星图节点连线（关系类型：family/friend/love/enemy/master_student/colleague/association/other）
-[PLACEHOLDER|||任务标题|||任务描述] - 表示任务较长（例如完整的章节写作）或有多个创作方向可选，只给出执行提示而不输出完整内容以节省tokens。用户点击"执行任务"后才会真正发送请求生成内容。
-
-重要提醒：指令是给系统程序解析的，用户看不到它们。不要在任何情况下用代码块、引用或其他markdown包裹指令。\n\n${fullContent}`;
+    const extraContext = contextPrompt ? `\n\n当前创作上下文：${contextPrompt}` : '';
+    const fullContent = buildAIdoSystemPrompt(`${content}${extraContext}`);
 
     const userMsg: ChatMessage = { role: 'user', content };
     addMessage(userMsg);
@@ -419,45 +300,14 @@ export default function AIAssistant() {
     const assistantMsg: ChatMessage = { role: 'assistant', content: '' };
     addMessage(assistantMsg);
 
-    try {
-      const response = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId,
-          messages: [...messages, { role: 'user', content: fullContent }],
-          context: { selectedCount: selectedItems.size },
-        }),
-      });
+    await streamChatCompletion({
+      projectId,
+      messages: [...messages, { role: 'user', content: fullContent }],
+      context: { selectedCount: selectedItems.size },
+      onDelta: (fullText) => updateLastAssistant(fullText),
+      onError: (err) => updateLastAssistant(err),
+    });
 
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      let fullResponse = '';
-
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const text = decoder.decode(value);
-          const lines = text.split('\n');
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(line.slice(6));
-                if (data.error) {
-                  fullResponse = data.error;
-                } else if (data.delta) {
-                  fullResponse += data.delta;
-                }
-                updateLastAssistant(fullResponse);
-              } catch { /* ignore */ }
-            }
-          }
-        }
-      }
-    } catch (e) {
-      updateLastAssistant('抱歉，AI 服务暂时不可用。请检查 API Key 配置。');
-    }
     setStreaming(false);
   };
 
@@ -499,33 +349,20 @@ export default function AIAssistant() {
             <p className="text-[10px] text-[#c9a96e]/40 uppercase tracking-wider">AIdo 指令</p>
             {aidoActions.map((action, i) => {
               const isExecuting = executingAction === `${action.type}-${action.title}`;
-              const iconMap: Record<string, React.ReactNode> = {
-                chapter: <BookOpen size={12} />,
-                outline: <ListTree size={12} />,
-                worldbuilding: <Globe size={12} />,
-                starchart: <Stars size={12} />,
-                placeholder: <Bot size={12} />,
-              };
-              const labelMap: Record<string, string> = {
-                chapter: '正文',
-                outline: '大纲',
-                worldbuilding: '世界观',
-                starchart: '星图',
-                placeholder: '长任务',
-              };
+              const meta = AIDO_TYPE_META[action.type] || { label: action.type, color: 'bg-[#c9a96e]/5' };
               const colorMap: Record<string, string> = {
-                chapter: 'bg-[#c9a96e]/5',
-                outline: 'bg-[#7dc9a9]/5',
-                worldbuilding: 'bg-[#7da8c9]/5',
-                starchart: 'bg-[#e8a8c9]/5',
-                placeholder: 'bg-orange-900/15 border border-orange-400/15',
+                EDIT: 'bg-[#c9a96e]/5',
+                OUTLINE: 'bg-[#7dc9a9]/5',
+                WORLDBUILD: 'bg-[#7da8c9]/5',
+                STARCHART: 'bg-[#e8a8c9]/5',
+                PLACEHOLDER: 'bg-orange-900/15 border border-orange-400/15',
               };
               return (
                 <div key={i} className={`flex items-center gap-2 rounded-lg px-3 py-2 ${colorMap[action.type] || 'bg-[#c9a96e]/5'}`}>
-                  <span className="text-[#c9a96e]/70">{iconMap[action.type]}</span>
+                  <span className="text-[#c9a96e]/70">{aidoIconMap[action.type]}</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-[#f5f0e8]/70 truncate">
-                      <span className="text-[#c9a96e]/40">{labelMap[action.type]}</span> — {action.title}
+                      <span className="text-[#c9a96e]/40">{meta.label}</span> — {action.title}
                     </p>
                     {action.content && (
                       <p className="text-[10px] text-[#f5f0e8]/30 truncate">{action.content.slice(0, 60)}</p>
@@ -535,13 +372,13 @@ export default function AIAssistant() {
                     onClick={() => executeAIdoAction(action)}
                     disabled={isExecuting}
                     className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors disabled:opacity-50 ${
-                      action.type === 'placeholder'
-                        ? 'bg-orange-900/30 text-orange-400 hover:bg-orange-900/50'
-                        : 'bg-[#c9a96e]/20 text-[#c9a96e] hover:bg-[#c9a96e]/30'
-                    }`}
-                  >
-                    {isExecuting ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
-                    {action.type === 'placeholder' ? '执行任务' : '执行'}
+                      action.type === 'PLACEHOLDER'
+                    ? 'bg-orange-900/30 text-orange-400 hover:bg-orange-900/50'
+                    : 'bg-[#c9a96e]/20 text-[#c9a96e] hover:bg-[#c9a96e]/30'
+                }`}
+              >
+                {isExecuting ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
+                {action.type === 'PLACEHOLDER' ? '执行任务' : '执行'}
                   </button>
                 </div>
               );

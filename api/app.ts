@@ -18,6 +18,7 @@ import worldbuildingRoutes from './routes/worldbuilding.js'
 import chapterRoutes from './routes/chapters.js'
 import outlineRoutes from './routes/outlines.js'
 import starchartRoutes from './routes/starchart.js'
+import timelineRoutes from './routes/timeline.js'
 import aiRoutes from './routes/ai.js'
 
 // for esm mode
@@ -59,6 +60,7 @@ app.use('/api/projects/:projectId/worldbuilding', worldbuildingRoutes)
 app.use('/api/projects/:projectId/chapters', chapterRoutes)
 app.use('/api/projects/:projectId/outlines', outlineRoutes)
 app.use('/api/projects/:projectId/starchart', starchartRoutes)
+app.use('/api/projects/:projectId/timeline', timelineRoutes)
 app.use('/api/ai', aiRoutes)
 
 /**

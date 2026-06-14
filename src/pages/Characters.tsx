@@ -6,12 +6,14 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Plus, User, Trash2, Edit3, Search, Grid3X3, List } from 'lucide-react';
+import { useToastStore } from '@/stores/toastStore';
 
 export default function Characters() {
   const { id } = useParams<{ id: string }>();
   const projectId = Number(id);
   const navigate = useNavigate();
   const { characters, fetchCharacters, createCharacter, deleteCharacter } = useProjectStore();
+  const addToast = useToastStore(s => s.addToast);
   const [showCreate, setShowCreate] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [search, setSearch] = useState('');
@@ -33,8 +35,9 @@ export default function Characters() {
       await createCharacter(projectId, form);
       setShowCreate(false);
       setForm({ name: '', role: '', gender: '', personality: '', background: '' });
-    } catch (e) {
-      console.error('创建角色失败:', e);
+      addToast('角色创建成功');
+    } catch (e: any) {
+      addToast(e.message || '创建角色失败', 'error');
     } finally {
       setCreating(false);
     }
@@ -43,6 +46,7 @@ export default function Characters() {
   const handleDelete = async (charId: number) => {
     if (confirm('确定要删除这个角色吗？')) {
       await deleteCharacter(projectId, charId);
+      addToast('角色已删除');
     }
   };
 

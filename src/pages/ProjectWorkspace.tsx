@@ -6,10 +6,12 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Plus, Trash2, Edit3, Users, Calendar } from 'lucide-react';
+import { useToastStore } from '@/stores/toastStore';
 
 export default function ProjectWorkspace() {
   const navigate = useNavigate();
   const { projects, fetchProjects, createProject, deleteProject, loading } = useProjectStore();
+  const addToast = useToastStore(s => s.addToast);
   const [showCreate, setShowCreate] = useState(false);
   const [newProject, setNewProject] = useState({ title: '', summary: '', genre: '' });
   const [creating, setCreating] = useState(false);
@@ -25,9 +27,10 @@ export default function ProjectWorkspace() {
       const project = await createProject(newProject);
       setShowCreate(false);
       setNewProject({ title: '', summary: '', genre: '' });
+      addToast('项目创建成功');
       navigate(`/projects/${project.id}/characters`);
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      addToast(e.message || '创建项目失败', 'error');
     }
     setCreating(false);
   };
@@ -36,6 +39,7 @@ export default function ProjectWorkspace() {
     e.stopPropagation();
     if (confirm('确定要删除这个项目吗？')) {
       await deleteProject(id);
+      addToast('项目已删除');
     }
   };
 

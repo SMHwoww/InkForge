@@ -9,6 +9,8 @@ import AIAssistant from "@/pages/AIAssistant";
 import ChapterEditor from "@/pages/ChapterEditor";
 import OutlineEditor from "@/pages/OutlineEditor";
 import StarChart from "@/pages/StarChart";
+import Timeline from "@/pages/Timeline";
+import ToastContainer from "@/components/ui/Toast";
 
 export default function App() {
   return (
@@ -24,8 +26,10 @@ export default function App() {
           <Route path="/projects/:id/chapters" element={<ChapterEditor />} />
           <Route path="/projects/:id/outlines" element={<OutlineEditor />} />
           <Route path="/projects/:id/starchart" element={<StarChart />} />
+          <Route path="/projects/:id/timeline" element={<Timeline />} />
         </Route>
       </Routes>
+      <ToastContainer />
     </Router>
   );
 }

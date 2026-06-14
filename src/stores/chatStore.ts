@@ -2,8 +2,10 @@ import { create } from 'zustand';
 import type { ChatMessage } from '@/types';
 
 interface ChatState {
+  projectId: number | null;
   messages: ChatMessage[];
   isStreaming: boolean;
+  setProjectId: (id: number | null) => void;
   addMessage: (msg: ChatMessage) => void;
   setStreaming: (val: boolean) => void;
   clearMessages: () => void;
@@ -11,8 +13,11 @@ interface ChatState {
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
+  projectId: null,
   messages: [],
   isStreaming: false,
+
+  setProjectId: (id) => set({ projectId: id }),
 
   addMessage: (msg) => set({ messages: [...get().messages, msg] }),
 

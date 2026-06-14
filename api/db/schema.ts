@@ -36,3 +36,33 @@ export const worldbuildingItems = sqliteTable('worldbuilding_items', {
   createdAt: text('created_at').default(''),
   updatedAt: text('updated_at').default(''),
 });
+
+export const timelineEvents = sqliteTable('timeline_events', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  projectId: integer('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  content: text('content').default(''),
+  eventDate: text('event_date').default(''),
+  sortOrder: integer('sort_order').default(0),
+  category: text('category').default(''),
+  placed: integer('placed').default(0),
+  posX: integer('pos_x'),
+  posY: integer('pos_y'),
+  createdAt: text('created_at').default(''),
+  updatedAt: text('updated_at').default(''),
+});
+
+export const timelinePerspectives = sqliteTable('timeline_perspectives', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  projectId: integer('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  sortOrder: integer('sort_order').default(0),
+  createdAt: text('created_at').default(''),
+  updatedAt: text('updated_at').default(''),
+});
+
+export const timelineConfig = sqliteTable('timeline_config', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  projectId: integer('project_id').notNull().unique().references(() => projects.id, { onDelete: 'cascade' }),
+  xLabels: text('x_labels').notNull(),
+});

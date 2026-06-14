@@ -14,6 +14,7 @@ import {
   Plus, Trash2, FileText, Save, Clock, Edit3, ChevronRight,
   User, Eye, ExternalLink,
 } from 'lucide-react';
+import { useToastStore } from '@/stores/toastStore';
 
 interface ReferenceItem {
   id: string;
@@ -138,6 +139,7 @@ export default function ChapterEditor() {
     fetchChapters, createChapter, updateChapter, deleteChapter,
     fetchCharacters,
   } = useProjectStore();
+  const addToast = useToastStore(s => s.addToast);
 
   const [selectedChapterId, setSelectedChapterId] = useState<number | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -459,14 +461,16 @@ export default function ChapterEditor() {
       setShowCreate(false);
       setNewTitle('');
       setSelectedChapterId(chapter.id);
-    } catch (e) {
-      console.error('创建章节失败:', e);
+      addToast('章节创建成功');
+    } catch (e: any) {
+      addToast(e.message || '创建章节失败', 'error');
     }
   };
 
   const handleDeleteChapter = async (chapterId: number) => {
     if (!confirm('确定要删除这个章节吗？')) return;
     await deleteChapter(projectId, chapterId);
+    addToast('章节已删除');
     if (selectedChapterId === chapterId) {
       setSelectedChapterId(null);
     }

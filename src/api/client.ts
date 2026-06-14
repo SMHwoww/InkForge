@@ -90,4 +90,32 @@ export const api = {
     request<any>(`/projects/${projectId}/starchart/edges/${edgeId}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteStarEdge: (projectId: number, edgeId: number) =>
     request<any>(`/projects/${projectId}/starchart/edges/${edgeId}`, { method: 'DELETE' }),
+
+  // Timeline
+  getTimeline: (projectId: number) =>
+    request<any[]>(`/projects/${projectId}/timeline`),
+  createTimelineEvent: (projectId: number, data: { title: string; content?: string; eventDate?: string; sortOrder?: number; category?: string; placed?: number; posX?: number; posY?: number }) =>
+    request<any>(`/projects/${projectId}/timeline`, { method: 'POST', body: JSON.stringify(data) }),
+  updateTimelineEvent: (projectId: number, eventId: number, data: any) =>
+    request<any>(`/projects/${projectId}/timeline/${eventId}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteTimelineEvent: (projectId: number, eventId: number) =>
+    request<any>(`/projects/${projectId}/timeline/${eventId}`, { method: 'DELETE' }),
+  reorderTimelineEvents: (projectId: number, items: Array<{ id: number; sortOrder: number }>) =>
+    request<any>(`/projects/${projectId}/timeline/reorder/batch`, { method: 'PUT', body: JSON.stringify({ items }) }),
+
+  // Timeline Perspectives
+  getPerspectives: (projectId: number) =>
+    request<any[]>(`/projects/${projectId}/timeline/perspectives`),
+  createPerspective: (projectId: number, data: { name: string }) =>
+    request<any>(`/projects/${projectId}/timeline/perspectives`, { method: 'POST', body: JSON.stringify(data) }),
+  updatePerspective: (projectId: number, perspectiveId: number, data: any) =>
+    request<any>(`/projects/${projectId}/timeline/perspectives/${perspectiveId}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deletePerspective: (projectId: number, perspectiveId: number) =>
+    request<any>(`/projects/${projectId}/timeline/perspectives/${perspectiveId}`, { method: 'DELETE' }),
+
+  // Timeline Config
+  getTimelineConfig: (projectId: number) =>
+    request<{ xLabels: string[] }>(`/projects/${projectId}/timeline/config`),
+  updateTimelineConfig: (projectId: number, data: { xLabels: string[] }) =>
+    request<{ xLabels: string[] }>(`/projects/${projectId}/timeline/config`, { method: 'PUT', body: JSON.stringify(data) }),
 };

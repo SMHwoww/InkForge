@@ -7,11 +7,13 @@ import { Modal } from '@/components/ui/Modal';
 import { WorldbuildingCategories } from '@/types';
 import { Plus, Trash2, ChevronDown, ChevronRight, Sparkles, Loader2 } from 'lucide-react';
 import { api } from '@/api/client';
+import { useToastStore } from '@/stores/toastStore';
 
 export default function Worldbuilding() {
   const { id } = useParams<{ id: string }>();
   const projectId = Number(id);
   const { worldbuilding, fetchWorldbuilding, createWorldbuilding, updateWorldbuilding, deleteWorldbuilding } = useProjectStore();
+  const addToast = useToastStore(s => s.addToast);
   const [activeCategory, setActiveCategory] = useState<string>('全部');
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [showCreate, setShowCreate] = useState(false);
@@ -40,6 +42,7 @@ export default function Worldbuilding() {
   const handleDelete = async (itemId: number) => {
     if (confirm('确定要删除这条世界观设定吗？')) {
       await deleteWorldbuilding(projectId, itemId);
+      addToast('世界观条目已删除');
     }
   };
 
