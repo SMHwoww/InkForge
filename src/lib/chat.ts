@@ -51,7 +51,9 @@ export async function streamChatCompletion(options: ChatStreamOptions): Promise<
               }
               if (data.delta) {
                 fullText += data.delta;
-                onDelta(fullText, data.delta);
+                // 部分 AI 模型输出字面量 \n 而非真正的换行符，需要还原
+                const cooked = fullText.replace(/\\n/g, '\n');
+                onDelta(cooked, data.delta);
               }
             } catch { /* ignore malformed JSON */ }
           }
