@@ -4,7 +4,7 @@ name: 'Release'
 on:
   push:
     branches:
-      - tauri
+      - Tauri
   workflow_dispatch:
 
 jobs:
