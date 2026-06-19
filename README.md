@@ -22,10 +22,6 @@
 # 安装依赖
 npm install
 
-# 配置环境变量
-cp .env.example .env
-# 编辑 .env 填入你的 OpenAI API Key
-
 # 启动开发服务器（前端 + 后端）
 npm run dev
 
@@ -46,12 +42,16 @@ InkForge/
 │   │   └── schema.ts              # Drizzle ORM Schema
 │   ├── routes/
 │   │   ├── ai.ts                  # AI 对话 / 生成角色 / 生成世界观
-│   │   ├── auth.ts                # 认证
+│   │   ├── auth.ts                # 认证相关
 │   │   ├── chapters.ts            # 章节 CRUD
 │   │   ├── characters.ts          # 角色 CRUD
+│   │   ├── chat.ts                # AI 聊天记录持久化
+│   │   ├── config.ts              # 全局配置管理
+│   │   ├── image.ts               # 真珠 AI 生图
+│   │   ├── mcp.ts                 # MCP 服务配置与热重载
 │   │   ├── outlines.ts            # 大纲 CRUD
 │   │   ├── projects.ts            # 项目 CRUD
-│   │   ├── relations.ts           # 关系边
+│   │   ├── relations.ts           # 关系图谱
 │   │   ├── starchart.ts           # 星图节点
 │   │   ├── timeline.ts            # 时间轴事件 / 视角 / 配置
 │   │   └── worldbuilding.ts       # 世界观条目
@@ -59,7 +59,9 @@ InkForge/
 │   │   ├── aiService.ts           # OpenAI 流式聊天 & 生成
 │   │   ├── chapterService.ts
 │   │   ├── characterService.ts
-│   │   ├── logger.ts              # 文件日志
+│   │   ├── logger.ts              # 日志服务
+│   │   ├── mcpClient.ts           # MCP 客户端（StreamableHTTP）
+│   │   ├── mcpConfig.ts           # 统一配置管理（config.json）
 │   │   ├── outlineService.ts
 │   │   ├── projectService.ts
 │   │   ├── relationService.ts
@@ -72,6 +74,8 @@ InkForge/
 ├── src/
 │   ├── api/
 │   │   └── client.ts              # 前端 API 客户端
+│   ├── assets/
+│   │   └── react.svg
 │   ├── components/
 │   │   ├── ai/
 │   │   │   └── AIPanel.tsx        # 内嵌 AI 面板（大纲/时间轴复用）
@@ -101,25 +105,33 @@ InkForge/
 │   │   ├── OutlineEditor.tsx      # 大纲编辑器（树形+AI面板）
 │   │   ├── ProjectWorkspace.tsx   # 项目工作区
 │   │   ├── RelationGraph.tsx      # 关系图谱
+│   │   ├── Settings.tsx           # 设置（AI 配置、MCP 配置、模块管理）
 │   │   ├── StarChart.tsx          # 星图节点管理
 │   │   ├── Timeline.tsx           # 时间轴（网格拖拽+多视角+AI面板）
 │   │   └── Worldbuilding.tsx      # 世界观条目管理
 │   ├── stores/
 │   │   ├── chatStore.ts           # AI 聊天状态（projectId 隔离）
+│   │   ├── moduleConfigStore.ts   # 模块配置状态（显示/隐藏/排序）
 │   │   ├── projectStore.ts        # 全局项目/角色/世界观/章节/大纲/时间轴状态
 │   │   └── toastStore.ts          # Toast 通知状态
 │   ├── types/
 │   │   └── index.ts               # TypeScript 类型定义
 │   ├── App.tsx                    # 路由配置
 │   ├── index.css                  # 全局样式 & Tailwind
-│   └── main.tsx                   # 应用入口
+│   ├── main.tsx                   # 应用入口
+│   └── vite-env.d.ts              # Vite 类型声明
 ├── data/                          # SQLite 数据库文件（运行时生成）
 ├── public/                        # 静态资源
-├── .env.example                   # 环境变量模板
+├── config.json                    # 运行时配置
 ├── package.json
 ├── vite.config.ts
 ├── tailwind.config.js
-└── tsconfig.json
+├── postcss.config.js
+├── tsconfig.json
+├── eslint.config.js
+├── nodemon.json
+├── vercel.json
+└── index.html
 ```
 
 ## 功能模块
@@ -127,20 +139,15 @@ InkForge/
 - **仪表盘** — 项目概览、写作进度
 - **项目管理** — 创建/管理小说项目
 - **AI 助手（AIDO）** — 智能续写、润色、扩写、大纲生成，支持直接操作项目数据（角色/世界观/星图/大纲/正文）
+- **真珠生图** — AI 图像生成，支持阿里云百炼/OpenAI 接口，异步生成与轮询
+- **设置** — 可视化配置 AI 模型、API Key、MCP 服务，支持热重载
 - **角色管理** — 角色信息、外貌、性格、背景
 - **世界观** — 地理、历史、势力、魔法体系等分类管理
-- **正文编辑** — 分章节写作，富文本编辑
+- **正文编辑** — 分章节写作，富文本编辑，支持 Markdown 快捷语法
 - **大纲编辑器** — 树形大纲，拖拽排序
 - **星图** — 可视化角色/概念关系图，力导向自动布局，可编辑节点与连线
+- **关系图谱** — 角色/概念间关系可视化编辑
 - **时间轴** — 网格化拖拽布局，支持多视角（角色线/世界线等），事件池管理，拖拽放置到时间×视角坐标
-
-## 环境变量
-
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `OPENAI_API_KEY` | OpenAI API 密钥 | 必填 |
-| `OPENAI_BASE_URL` | API 地址 | `https://api.openai.com/v1` |
-| `OPENAI_MODEL` | 模型名称 | `gpt-4o-mini` |
 
 ## License
 

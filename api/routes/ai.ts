@@ -14,7 +14,7 @@ router.post('/chat', async (req, res) => {
 
   const systemMessage = {
     role: 'system',
-    content: '你是一位专业的小说创作助手，擅长帮助作者进行角色设计、世界观构建、情节构思和文字润色。请用中文回答，语气友好专业。' +
+    content: '你是一位专业的小说创作助手，擅长帮助作者进行角色设计、世界观构建、情节构思和文字润色。当用户需要实时信息、网络搜索或外部数据时，可以调用提供的工具来获取。请用中文回答，语气友好专业。' +
       (context ? `\n\n当前创作上下文：${JSON.stringify(context)}` : ''),
   };
 

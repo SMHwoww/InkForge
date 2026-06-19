@@ -9,9 +9,10 @@ import express, {
 } from 'express'
 import cors from 'cors'
 import path from 'path'
-import dotenv from 'dotenv'
 import { fileURLToPath } from 'url'
 import { initDatabase } from './db/index.js'
+import { loadConfig, getMcpEnabled, loadMcpServerConfigs } from './services/mcpConfig.js';
+import { initializeMcp } from './services/mcpClient.js'
 import projectRoutes from './routes/projects.js'
 import characterRoutes from './routes/characters.js'
 import worldbuildingRoutes from './routes/worldbuilding.js'
@@ -20,19 +21,31 @@ import outlineRoutes from './routes/outlines.js'
 import starchartRoutes from './routes/starchart.js'
 import timelineRoutes from './routes/timeline.js'
 import aiRoutes from './routes/ai.js'
+import mcpRoutes from './routes/mcp.js'
+import configRoutes from './routes/config.js'
+import imageRoutes from './routes/image.js'
+import chatRoutes from './routes/chat.js'
 
 // for esm mode
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-// load env — override so .env takes priority over shell env vars
-dotenv.config({ override: true })
+// Load config from config.json (replaces .env)
+loadConfig()
 
 // init database
 initDatabase().catch(err => {
   console.error('Database init failed:', err);
   process.exit(1);
 });
+
+// init MCP
+if (getMcpEnabled()) {
+    const mcpConfigs = loadMcpServerConfigs();
+    initializeMcp(mcpConfigs).catch(err => {
+      console.error('[MCP] Initialization failed:', err);
+    });
+  }
 
 const app: express.Application = express()
 
@@ -62,6 +75,10 @@ app.use('/api/projects/:projectId/outlines', outlineRoutes)
 app.use('/api/projects/:projectId/starchart', starchartRoutes)
 app.use('/api/projects/:projectId/timeline', timelineRoutes)
 app.use('/api/ai', aiRoutes)
+app.use('/api/mcp', mcpRoutes)
+app.use('/api/image', imageRoutes)
+app.use('/api/config', configRoutes)
+app.use('/api/chat', chatRoutes)
 
 /**
  * health

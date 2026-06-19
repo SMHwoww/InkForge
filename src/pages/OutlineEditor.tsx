@@ -1,16 +1,15 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useProjectStore } from '@/stores/projectStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
-import AIPanel from '@/components/ai/AIPanel';
 import type { OutlineItem } from '@/types';
 import {
   Plus, Trash2, ChevronDown, ChevronRight, GripVertical,
   ListTree, Edit3, CheckCircle, Circle, Clock, Save,
-  ArrowUp, ArrowDown, ArrowRight, MoveHorizontal, Sparkles,
+  ArrowUp, ArrowDown, ArrowRight, MoveHorizontal,
 } from 'lucide-react';
 
 export default function OutlineEditor() {
@@ -29,7 +28,6 @@ export default function OutlineEditor() {
   const [showCreate, setShowCreate] = useState(false);
   const [newForm, setNewForm] = useState({ title: '', description: '', parentId: null as number | null, level: 0 });
   const [saving, setSaving] = useState(false);
-  const [showAI, setShowAI] = useState(false);
 
   useEffect(() => {
     if (projectId) {
@@ -260,22 +258,6 @@ export default function OutlineEditor() {
 
   const flatItems = getFlatItems(outlines);
 
-  // Build context prompt for AI
-  const outlineContext = useMemo(() => {
-    const lines = ['以下是大纲数据。你应当直接使用[OUTLINE|||...]指令来回复，放在回复末尾。'];
-    lines.push(`共有 ${flatItems.length} 个大纲条目：`);
-    for (const item of flatItems) {
-      lines.push(`- ${'  '.repeat(item.level)}${item.title}`);
-    }
-    return lines.join('\n');
-  }, [flatItems]);
-
-  const handleAIdoAction = async (action: { type: string; action: string; title: string; content: string }) => {
-    if (action.type === 'outline') {
-      await createOutline(projectId, { title: action.title, description: action.content, level: 0, parentId: null });
-    }
-  };
-
   return (
     <div className="h-full flex flex-col">
       {/* Toolbar */}
@@ -287,13 +269,7 @@ export default function OutlineEditor() {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => setShowAI(!showAI)} className={showAI ? 'text-[#c9a96e]' : ''}>
-            <Sparkles size={14} /> {showAI ? '关闭AI' : 'AI助手'}
-          </Button>
-          <Button variant="secondary" size="sm" onClick={() => {
-            setNewForm({ title: '', description: '', parentId: null, level: 0 });
-            setShowCreate(true);
-          }}>
+          <Button variant="ghost" size="sm" onClick={() => { setNewForm({ title: '', description: '', parentId: null, level: 0 }); setShowCreate(true); }}>
             <Plus size={14} />新建条目
           </Button>
           {flatItems.length > 0 && (
@@ -335,15 +311,6 @@ export default function OutlineEditor() {
           </div>
         )}
       </div>
-        {showAI && (
-          <AIPanel
-            projectId={projectId}
-            contextPrompt={outlineContext}
-            title="大纲AI助手"
-            onAIdoAction={handleAIdoAction}
-            onClose={() => setShowAI(false)}
-          />
-        )}
       </div>
 
       {/* Create Modal */}

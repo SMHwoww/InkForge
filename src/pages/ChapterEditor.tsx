@@ -1,143 +1,24 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { createRoot } from 'react-dom/client';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
-import Mention from '@tiptap/extension-mention';
-import { type SuggestionProps } from '@tiptap/suggestion';
 import { useProjectStore } from '@/stores/projectStore';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import {
   Plus, Trash2, FileText, Save, Clock, Edit3, ChevronRight,
-  User, Eye, ExternalLink,
+  Eye,
 } from 'lucide-react';
 import { useToastStore } from '@/stores/toastStore';
-
-interface ReferenceItem {
-  id: string;
-  label: string;
-  type: string;
-  description: string;
-}
-
-const iconMap: Record<string, React.ReactNode> = {
-  character: <User size={14} />,
-};
-
-// Tooltip component for mention hover
-function MentionTooltip({ item, onNavigate }: { item: ReferenceItem; onNavigate: (item: ReferenceItem) => void }) {
-  return (
-    <div
-      className="bg-[#1a1a2e] border rounded-lg shadow-xl p-3 min-w-[200px] max-w-[300px] pointer-events-auto"
-      style={{ borderColor: '#c9a96e40' }}
-    >
-      <div className="flex items-center gap-2 mb-2">
-        <span
-          className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
-          style={{ background: '#c9a96e20', color: '#c9a96e' }}
-        >
-          {iconMap[item.type]}
-        </span>
-        <span className="text-sm font-semibold text-[#f5f0e8]">{item.label}</span>
-        <span
-          className="text-[10px] px-1.5 py-0.5 rounded-full ml-auto"
-          style={{ background: '#c9a96e15', color: '#c9a96e' }}
-        >
-          角色
-        </span>
-      </div>
-      {item.description && (
-        <p className="text-xs text-[#f5f0e8]/50 leading-relaxed mb-2">{item.description}</p>
-      )}
-      <button
-        onClick={(e) => { e.stopPropagation(); onNavigate(item); }}
-        className="flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-colors w-full justify-center"
-        style={{ background: '#c9a96e15', color: '#c9a96e' }}
-      >
-        <ExternalLink size={11} />
-        跳转到角色
-      </button>
-    </div>
-  );
-}
-
-function MentionList(props: SuggestionProps<ReferenceItem>) {
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const { items, command } = props;
-
-  const selectItem = useCallback(
-    (index: number) => {
-      const item = items[index];
-      if (item) {
-        command({ id: item.id, label: item.label, type: item.type, description: item.description });
-      }
-    },
-    [command, items],
-  );
-
-  useEffect(() => {
-    setSelectedIndex(0);
-  }, [items]);
-
-  if (items.length === 0) {
-    return (
-      <div className="bg-[#1a1a2e] border border-[#c9a96e]/20 rounded-lg shadow-xl p-2 min-w-[200px]">
-        <p className="text-xs text-[#f5f0e8]/40 px-3 py-2">没有找到可引用的条目</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="bg-[#1a1a2e] border border-[#c9a96e]/20 rounded-lg shadow-xl p-1 min-w-[240px] max-h-[300px] overflow-y-auto mention-suggestion-list" data-selected={selectedIndex}>
-      {items.map((item, index) => {
-        const color = '#c9a96e';
-        return (
-          <button
-            key={item.id}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-left transition-colors text-sm ${
-              index === selectedIndex
-                ? 'bg-[#c9a96e]/15'
-                : 'hover:bg-[#f5f0e8]/5'
-            }`}
-            onClick={() => selectItem(index)}
-            onMouseEnter={() => setSelectedIndex(index)}
-          >
-            <span
-              className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ background: `${color}20`, color }}
-            >
-              {iconMap[item.type]}
-            </span>
-            <div className="flex-1 min-w-0">
-              <span className="text-[#f5f0e8] block truncate">{item.label}</span>
-              {item.description && (
-                <span className="text-[#f5f0e8]/30 text-xs block truncate">{item.description}</span>
-              )}
-            </div>
-            <span
-              className="text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0"
-              style={{ background: `${color}15`, color }}
-            >
-              角色
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 export default function ChapterEditor() {
   const { id } = useParams<{ id: string }>();
   const projectId = Number(id);
-  const navigate = useNavigate();
   const {
-    chapters, characters,
+    chapters,
     fetchChapters, createChapter, updateChapter, deleteChapter,
-    fetchCharacters,
   } = useProjectStore();
   const addToast = useToastStore(s => s.addToast);
 
@@ -151,9 +32,6 @@ export default function ChapterEditor() {
   const selectedChapterIdRef = useRef<number | null>(null);
   const projectIdRef = useRef<number>(projectId);
   const updateChapterRef = useRef(updateChapter);
-  const referenceItemsRef = useRef<ReferenceItem[]>([]);
-  const editorContainerRef = useRef<HTMLDivElement>(null);
-  const tooltipRef = useRef<{ root: any; el: HTMLElement } | null>(null);
 
   // Keep refs updated
   useEffect(() => { selectedChapterIdRef.current = selectedChapterId; }, [selectedChapterId]);
@@ -163,118 +41,8 @@ export default function ChapterEditor() {
   useEffect(() => {
     if (projectId) {
       fetchChapters(projectId);
-      fetchCharacters(projectId);
     }
   }, [projectId]);
-
-  // Build reference items from characters
-  useEffect(() => {
-    referenceItemsRef.current = [
-      ...characters.map(c => ({
-        id: `char-${c.id}`,
-        label: c.name,
-        type: 'character',
-        description: c.role || '',
-      })),
-    ];
-  }, [characters]);
-
-  // Navigate to the source of a reference
-  const navigateToReference = useCallback((item: ReferenceItem) => {
-    if (item.id.startsWith('char-')) {
-      const charId = item.id.replace('char-', '');
-      navigate(`/projects/${projectId}/characters/${charId}`);
-    }
-  }, [navigate, projectId]);
-
-  // Show tooltip on mention hover
-  const showTooltip = useCallback((el: HTMLElement, item: ReferenceItem) => {
-    hideTooltip();
-    tooltipRef.current?.root?.unmount();
-    tooltipRef.current?.el?.remove();
-
-    const tooltipEl = document.createElement('div');
-    tooltipEl.className = 'mention-tooltip-container';
-    tooltipEl.style.position = 'fixed';
-    tooltipEl.style.zIndex = '99999';
-    tooltipEl.style.pointerEvents = 'auto';
-    document.body.appendChild(tooltipEl);
-
-    const root = createRoot(tooltipEl);
-    tooltipRef.current = { root, el: tooltipEl };
-
-    root.render(<MentionTooltip item={item} onNavigate={navigateToReference} />);
-
-    // Position after render
-    requestAnimationFrame(() => {
-      const rect = el.getBoundingClientRect();
-      const tooltipRect = tooltipEl.getBoundingClientRect();
-      let top = rect.bottom + 8;
-      let left = rect.left;
-      if (left + tooltipRect.width > window.innerWidth - 16) {
-        left = window.innerWidth - tooltipRect.width - 16;
-      }
-      if (left < 16) left = 16;
-      if (top + tooltipRect.height > window.innerHeight - 16) {
-        top = rect.top - tooltipRect.height - 8;
-      }
-      tooltipEl.style.left = `${left}px`;
-      tooltipEl.style.top = `${top}px`;
-    });
-  }, [navigateToReference]);
-
-  const hideTooltip = useCallback(() => {
-    if (tooltipRef.current) {
-      tooltipRef.current.root.unmount();
-      tooltipRef.current.el.remove();
-      tooltipRef.current = null;
-    }
-  }, []);
-
-  // Handle mention hover/click interactions
-  useEffect(() => {
-    const container = editorContainerRef.current;
-    if (!container) return;
-
-    const handleMouseOver = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      const mentionEl = target.closest('.reference-mention') as HTMLElement;
-      if (!mentionEl) { hideTooltip(); return; }
-
-      const mentionId = mentionEl.getAttribute('data-id');
-      const mentionLabel = mentionEl.getAttribute('data-label');
-      const mentionType = mentionEl.getAttribute('data-type') || 'character';
-      const mentionDesc = mentionEl.getAttribute('data-description') || '';
-
-      if (mentionId && mentionLabel && mentionType) {
-        showTooltip(mentionEl, { id: mentionId, label: mentionLabel, type: mentionType, description: mentionDesc });
-      }
-    };
-
-    const handleClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      const mentionEl = target.closest('.reference-mention') as HTMLElement;
-      if (!mentionEl) return;
-
-      const mentionId = mentionEl.getAttribute('data-id');
-      const mentionLabel = mentionEl.getAttribute('data-label');
-      const mentionType = mentionEl.getAttribute('data-type') || 'character';
-      const mentionDesc = mentionEl.getAttribute('data-description') || '';
-
-      if (mentionId && mentionLabel && mentionType) {
-        hideTooltip();
-        navigateToReference({ id: mentionId, label: mentionLabel, type: mentionType, description: mentionDesc });
-      }
-    };
-
-    container.addEventListener('mouseover', handleMouseOver);
-    container.addEventListener('click', handleClick);
-    return () => {
-      container.removeEventListener('mouseover', handleMouseOver);
-      container.removeEventListener('click', handleClick);
-      hideTooltip();
-    };
-  }, [showTooltip, hideTooltip, navigateToReference, characters]);
 
   const selectedChapter = chapters.find(c => c.id === selectedChapterId) || null;
 
@@ -299,126 +67,7 @@ export default function ChapterEditor() {
         heading: { levels: [1, 2, 3] },
       }),
       Placeholder.configure({
-        placeholder: '开始书写你的故事... 输入 @ 可以引用角色、地点、事件等概念',
-      }),
-      Mention.configure({
-        HTMLAttributes: {
-          class: 'reference-mention',
-        },
-        renderHTML({ options, node }) {
-          return [
-            'span',
-            {
-              class: 'reference-mention',
-              'data-type': node.attrs.type || 'character',
-              'data-id': node.attrs.id,
-              'data-label': node.attrs.label,
-              'data-description': node.attrs.description || '',
-            },
-            `@${node.attrs.label ?? node.attrs.id}`,
-          ];
-        },
-        renderLabel({ options, node }) {
-          return `@${node.attrs.label ?? node.attrs.id}`;
-        },
-        suggestion: {
-          char: '@',
-          items: ({ query }) => {
-            const items = referenceItemsRef.current;
-            if (!query || query.length < 1) return items.slice(0, 20);
-            const q = query.toLowerCase();
-            return items
-              .filter(item =>
-                item.label.toLowerCase().includes(q) ||
-                item.description.toLowerCase().includes(q) ||
-                item.type.toLowerCase().includes(q),
-              )
-              .slice(0, 20);
-          },
-          render: () => {
-            let component: { update: (props: SuggestionProps<ReferenceItem>) => void; destroy: () => void } | null = null;
-            let popup: HTMLElement | null = null;
-            let selectedIndex = 0;
-            let itemsLength = 0;
-
-            const selectItem = (index: number) => {
-              const btn = popup?.querySelectorAll('button')[index] as HTMLElement | undefined;
-              if (btn) btn.click();
-            };
-
-            const updateSelection = (delta: number) => {
-              selectedIndex = (selectedIndex + delta + itemsLength) % itemsLength;
-              // Update DOM directly to highlight the selected item
-              if (popup) {
-                const buttons = popup.querySelectorAll('button');
-                buttons.forEach((b, i) => {
-                  if (i === selectedIndex) {
-                    b.classList.add('bg-[#c9a96e]/15');
-                    b.classList.remove('hover:bg-[#f5f0e8]/5');
-                  } else {
-                    b.classList.remove('bg-[#c9a96e]/15');
-                    b.classList.add('hover:bg-[#f5f0e8]/5');
-                  }
-                });
-                // Scroll into view
-                buttons[selectedIndex]?.scrollIntoView({ block: 'nearest' });
-              }
-            };
-
-            return {
-              onStart: (props: SuggestionProps<ReferenceItem>) => {
-                popup = document.createElement('div');
-                popup.className = 'mention-popup-container';
-                document.body.appendChild(popup);
-                selectedIndex = 0;
-                itemsLength = props.items.length;
-
-                const root = createRoot(popup);
-                component = {
-                  update: (p: SuggestionProps<ReferenceItem>) => {
-                    itemsLength = p.items.length;
-                    if (selectedIndex >= itemsLength) selectedIndex = Math.max(0, itemsLength - 1);
-                    root.render(<MentionList {...p} />);
-                  },
-                  destroy: () => {
-                    root.unmount();
-                    popup?.remove();
-                  },
-                };
-                component.update(props);
-              },
-              onUpdate: (props: SuggestionProps<ReferenceItem>) => {
-                component?.update(props);
-              },
-              onKeyDown: (props: { event: KeyboardEvent }) => {
-                const { event } = props;
-                if (event.key === 'ArrowUp') {
-                  event.preventDefault();
-                  updateSelection(-1);
-                  return true;
-                }
-                if (event.key === 'ArrowDown') {
-                  event.preventDefault();
-                  updateSelection(1);
-                  return true;
-                }
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  selectItem(selectedIndex);
-                  return true;
-                }
-                if (event.key === 'Escape') {
-                  component?.destroy();
-                  return true;
-                }
-                return false;
-              },
-              onExit: () => {
-                component?.destroy();
-              },
-            } as any;
-          },
-        },
+        placeholder: '开始书写你的故事...',
       }),
     ],
     content: selectedChapter?.content || '',
@@ -598,7 +247,7 @@ export default function ChapterEditor() {
         </div>
 
         {/* Editor / Preview Area */}
-        <div className="flex-1 overflow-y-auto bg-[#0f0f1a]" ref={editorContainerRef}>
+        <div className="flex-1 overflow-y-auto bg-[#0f0f1a]">
           {selectedChapter ? (
             isPreview ? (
               /* Preview Mode */
@@ -625,8 +274,6 @@ export default function ChapterEditor() {
                 <div className="mt-6 p-4 bg-[#1a1a2e]/50 rounded-xl border border-[#c9a96e]/8 max-w-md mx-auto">
                   <p className="text-xs text-[#f5f0e8]/40 mb-2">编辑器功能</p>
                   <ul className="text-xs text-[#f5f0e8]/30 space-y-1.5 text-left">
-                    <li>- 输入 <code className="text-[#c9a96e]/60 bg-[#c9a96e]/5 px-1 rounded">@</code> 快速引用角色、地点、事件等</li>
-                    <li>- 悬浮在引用上查看详情，点击可跳转到源页面</li>
                     <li>- 支持编辑/预览模式切换</li>
                     <li>- 支持 Markdown 快捷语法（# 标题, **粗体** 等）</li>
                     <li>- 自动保存，无需手动操作</li>

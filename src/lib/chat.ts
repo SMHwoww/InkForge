@@ -4,6 +4,24 @@
  * All AI-related pages use this single function for /api/ai/chat streaming.
  */
 
+export interface ToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
+export interface ToolProgress {
+  id: string;
+  name: string;
+  status: string;
+}
+
+export interface ToolResult {
+  id: string;
+  name: string;
+  result: string;
+}
+
 export interface ChatStreamOptions {
   projectId: number;
   messages: Array<{ role: string; content: string }>;
@@ -11,6 +29,12 @@ export interface ChatStreamOptions {
   onDelta: (fullText: string, delta: string) => void;
   onError: (errorMessage: string) => void;
   onDone?: () => void;
+  /** MCP: 模型决定调用工具时触发 */
+  onToolCalls?: (toolCalls: ToolCall[]) => void;
+  /** MCP: 工具执行进度 */
+  onToolProgress?: (progress: ToolProgress) => void;
+  /** MCP: 工具执行结果 */
+  onToolResult?: (result: ToolResult) => void;
   signal?: AbortSignal;
 }
 
@@ -21,7 +45,8 @@ export interface ChatStreamOptions {
  * `onDone()` when streaming completes.
  */
 export async function streamChatCompletion(options: ChatStreamOptions): Promise<void> {
-  const { projectId, messages, context, onDelta, onError, onDone, signal } = options;
+  const { projectId, messages, context, onDelta, onError, onDone, signal,
+    onToolCalls, onToolProgress, onToolResult } = options;
 
   try {
     const response = await fetch('/api/ai/chat', {
@@ -45,10 +70,31 @@ export async function streamChatCompletion(options: ChatStreamOptions): Promise<
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6));
+
               if (data.error) {
                 onError(data.error);
                 return;
               }
+
+              // MCP: tool_calls 事件
+              if (data.tool_calls) {
+                onToolCalls?.(data.tool_calls);
+                continue;
+              }
+
+              // MCP: tool_progress 事件
+              if (data.tool_progress) {
+                onToolProgress?.(data.tool_progress);
+                continue;
+              }
+
+              // MCP: tool_result 事件
+              if (data.tool_result) {
+                onToolResult?.(data.tool_result);
+                continue;
+              }
+
+              // 正常文本 delta
               if (data.delta) {
                 fullText += data.delta;
                 // 部分 AI 模型输出字面量 \n 而非真正的换行符，需要还原

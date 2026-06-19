@@ -118,4 +118,48 @@ export const api = {
     request<{ xLabels: string[] }>(`/projects/${projectId}/timeline/config`),
   updateTimelineConfig: (projectId: number, data: { xLabels: string[] }) =>
     request<{ xLabels: string[] }>(`/projects/${projectId}/timeline/config`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  // MCP Config
+  getMcpConfig: () =>
+    request<any>('/mcp/config'),
+  saveMcpConfig: (data: { enabled: boolean; servers: any[] }) =>
+    request<any>('/mcp/config', { method: 'PUT', body: JSON.stringify(data) }),
+  reloadMcp: () =>
+    request<any>('/mcp/reload', { method: 'POST' }),
+
+  // Global Config
+  getConfig: () => request<any>('/config'),
+  saveConfig: (data: any) => request<any>('/config', { method: 'PUT', body: JSON.stringify(data) }),
+
+  // AI Config
+  getAiConfig: () => request<any>('/config/ai'),
+  saveAiConfig: (data: any) => request<any>('/config/ai', { method: 'PUT', body: JSON.stringify(data) }),
+
+  // Module Config
+  getModuleConfig: () => request<{ visible: Record<string, boolean>; order: string[] }>('/config/modules'),
+  saveModuleConfig: (data: { visible?: Record<string, boolean>; order?: string[] }) =>
+    request<any>('/config/modules', { method: 'PUT', body: JSON.stringify(data) }),
+
+  // Chat History
+  getChatMessages: (projectId: number) =>
+    request<any[]>(`/chat/${projectId}`),
+  saveChatMessages: (projectId: number, messages: { role: string; content: string }[]) =>
+    request<any>(`/chat/${projectId}`, { method: 'POST', body: JSON.stringify({ messages }) }),
+  deleteChatMessages: (projectId: number) =>
+    request<any>(`/chat/${projectId}`, { method: 'DELETE' }),
+
+  // Image Generation (真珠)
+  generateImage: (data: {
+    prompt: string;
+    negativePrompt?: string;
+    size?: string;
+    n?: number;
+    model?: string;
+    projectId?: number;
+  }) =>
+    request<any>('/image/generate', { method: 'POST', body: JSON.stringify(data) }),
+  getImageTask: (taskId: string) =>
+    request<any>(`/image/task/${taskId}`),
+  createImageVariation: (data: { imageUrl: string; prompt?: string }) =>
+    request<any>('/image/variation', { method: 'POST', body: JSON.stringify(data) }),
 };

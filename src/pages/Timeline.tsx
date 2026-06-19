@@ -4,10 +4,9 @@ import { useProjectStore } from '@/stores/projectStore';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
-import AIPanel from '@/components/ai/AIPanel';
 import { TimelineCategories } from '@/types';
 import type { TimelineEvent } from '@/types';
-import { Plus, Trash2, Pencil, X, PanelRightClose, PanelRightOpen, Sparkles } from 'lucide-react';
+import { Plus, Trash2, Pencil, X, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { useToastStore } from '@/stores/toastStore';
 
 const X_COLUMNS = 10;
@@ -36,7 +35,6 @@ export default function Timeline() {
   const [poolOpen, setPoolOpen] = useState(true);
   const [editingXIndex, setEditingXIndex] = useState<number | null>(null);
   const [editingXValue, setEditingXValue] = useState('');
-  const [showAI, setShowAI] = useState(false);
 
   const workspaceRef = useRef<HTMLDivElement>(null);
 
@@ -167,32 +165,6 @@ export default function Timeline() {
   const getPlacedEventForCell = (x: number, perspId: number) =>
     timelineEvents.find(e => e.placed && e.posX === x && e.posY === perspId);
 
-  // Build context prompt for AI
-  const timelineContext = useMemo(() => {
-    const lines = ['以下是时间轴数据。你应当使用[TIMELINE|||...]指令来回复，放在回复末尾。'];
-    lines.push(`共有 ${timelineEvents.length} 个事件：`);
-    for (const ev of timelineEvents) {
-      const persp = timelinePerspectives.find(p => p.id === ev.posY);
-      const xLabel = xLabels[ev.posX ?? 0] || `时间${(ev.posX ?? 0) + 1}`;
-      const pos = ev.placed ? ` (已放置: ${xLabel}, ${persp?.name || '-'})` : ' (未放置)';
-      lines.push(`- ${ev.title}${pos}`);
-    }
-    return lines.join('\n');
-  }, [timelineEvents, timelinePerspectives, xLabels]);
-
-  const handleAIdoAction = async (action: { type: string; action: string; title: string; content: string }) => {
-    if (action.type === 'TIMELINE') {
-      await createTimelineEvent(projectId, {
-        title: action.title,
-        content: action.content,
-        eventDate: '',
-        category: '重大事件',
-        placed: 0,
-        sortOrder: timelineEvents.length,
-      });
-    }
-  };
-
   return (
     <div className="h-full flex flex-col bg-[#0f0f1a]">
       {/* Header */}
@@ -202,9 +174,6 @@ export default function Timeline() {
           <p className="text-[#f5f0e8]/40 text-xs">拖拽事件到工作区布置时间线</p>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => setShowAI(!showAI)} className={showAI ? 'text-[#c9a96e]' : ''}>
-            <Sparkles size={14} className="mr-1" />{showAI ? '关闭AI' : 'AI助手'}
-          </Button>
           <Button variant="ghost" size="sm" onClick={() => setShowPerspectiveMgr(true)}>
             管理视角 ({timelinePerspectives.length})
           </Button>
@@ -222,7 +191,7 @@ export default function Timeline() {
       {/* Main area */}
       <div className="flex-1 flex overflow-hidden">
         {/* Workspace */}
-        <div className={`flex-1 flex flex-col overflow-auto transition-all ${(showPool || showAI) ? '' : ''}`}>
+        <div className="flex-1 flex flex-col overflow-auto transition-all">
           {!hasPerspectives ? (
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
@@ -356,15 +325,6 @@ export default function Timeline() {
               ))}
             </div>
           </div>
-        )}
-        {showAI && (
-          <AIPanel
-            projectId={projectId}
-            contextPrompt={timelineContext}
-            title="时间轴AI助手"
-            onAIdoAction={handleAIdoAction}
-            onClose={() => setShowAI(false)}
-          />
         )}
       </div>
 

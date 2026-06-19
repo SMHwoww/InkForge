@@ -178,6 +178,29 @@ export async function initDatabase() {
       project_id INTEGER NOT NULL UNIQUE REFERENCES projects(id) ON DELETE CASCADE,
       x_labels TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS image_generations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL,
+      prompt TEXT NOT NULL,
+      negative_prompt TEXT,
+      model TEXT DEFAULT 'wan2.6-t2i',
+      size TEXT DEFAULT '1280*1280',
+      images TEXT,
+      task_id TEXT,
+      status TEXT DEFAULT 'pending',
+      created_at TEXT DEFAULT (datetime('now', 'localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+      content TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now', 'localtime'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_chat_project ON chat_messages(project_id);
   `);
 
   // Migration: add columns to existing timeline_events table

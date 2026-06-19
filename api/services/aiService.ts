@@ -1,33 +1,37 @@
 import OpenAI from 'openai';
 import type { Response } from 'express';
+import { toolsToOpenAI, executeToolCall } from './mcpClient.js';
+import { getAiConfig } from './mcpConfig.js';
 
-// OpenAI client is lazily initialized so that dotenv.config() has time
-// to load .env before the client reads OPENAI_API_KEY / OPENAI_BASE_URL.
 let _client: OpenAI | null = null;
+let _lastConfig: string = '';
 
 function getClient(): OpenAI {
-  if (!_client) {
+  const aiConfig = getAiConfig();
+  const configKey = `${aiConfig.apiKey}|${aiConfig.baseUrl}`;
+  if (!_client || configKey !== _lastConfig) {
     _client = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY || 'sk-placeholder',
-      baseURL: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
+      apiKey: aiConfig.apiKey || 'sk-placeholder',
+      baseURL: aiConfig.baseUrl || 'https://api.openai.com/v1',
     });
+    _lastConfig = configKey;
   }
   return _client;
 }
 
 function formatError(error: unknown): string {
-  const baseURL = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1';
-  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  const aiConfig = getAiConfig();
+  const baseURL = aiConfig.baseUrl || 'https://api.openai.com/v1';
+  const model = aiConfig.model || 'gpt-4o-mini';
 
-  // Specific error types must be checked before generic APIError since they all extend it
   if (error instanceof OpenAI.APIConnectionError) {
-    return `AI 连接失败：无法连接到 API 服务\n服务地址: ${baseURL}\n模型: ${model}\n\n可能原因：\n1. 网络连接问题，请检查网络是否正常\n2. OPENAI_BASE_URL 配置错误，请检查 .env 文件\n3. 服务端不可用或防火墙拦截\n\n原始错误: ${error.message}`;
+    return `AI 连接失败：无法连接到 API 服务\n服务地址: ${baseURL}\n模型: ${model}\n\n可能原因：\n1. 网络连接问题\n2. 服务地址配置错误\n3. 服务端不可用或防火墙拦截\n\n原始错误: ${error.message}`;
   }
   if (error instanceof OpenAI.AuthenticationError) {
-    return `AI 认证失败：API Key 无效或已过期\n请检查 .env 文件中的 OPENAI_API_KEY 配置\n原始错误: ${error.message}`;
+    return `AI 认证失败：API Key 无效或已过期\n请在设置中检查 AI API Key 配置\n原始错误: ${error.message}`;
   }
   if (error instanceof OpenAI.RateLimitError) {
-    return `AI 请求频率超限：API 调用次数已达上限\n请稍后重试或检查账户配额\n服务地址: ${baseURL}\n原始错误: ${error.message}`;
+    return `AI 请求频率超限：API 调用次数已达上限\n请稍后重试或检查账户配额\n原始错误: ${error.message}`;
   }
   if (error instanceof OpenAI.PermissionDeniedError) {
     return `AI 权限不足：API 账户没有访问该模型的权限\n请检查模型 ${model} 是否在账户中可用\n原始错误: ${error.message}`;
@@ -44,6 +48,14 @@ function formatError(error: unknown): string {
   return `AI 服务未知错误: ${String(error)}`;
 }
 
+// ─── SSE helpers ─────────────────────────────────────────────────────────────
+
+function writeSSE(res: Response, data: Record<string, any>): void {
+  res.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+// ─── Stream Chat ─────────────────────────────────────────────────────────────
+
 export async function streamChat(
   messages: Array<{ role: string; content: string }>,
   res: Response,
@@ -52,65 +64,171 @@ export async function streamChat(
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
 
-  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-  const apiKey = process.env.OPENAI_API_KEY;
+  const aiConfig = getAiConfig();
+  const model = aiConfig.model || 'gpt-4o-mini';
+  const apiKey = aiConfig.apiKey;
 
   if (!apiKey || apiKey === 'sk-placeholder') {
-    const errMsg = 'AI 服务未配置：请在项目根目录创建 .env 文件并设置 OPENAI_API_KEY=你的API密钥';
+    const errMsg = 'AI 服务未配置：请在设置中配置 AI API Key';
     console.warn('[AI] API Key not configured');
-    res.write(`data: ${JSON.stringify({ error: errMsg, done: true })}\n\n`);
+    writeSSE(res, { error: errMsg, done: true });
     res.end();
     return;
   }
 
   try {
-    const stream = await getClient().chat.completions.create({
-      model,
-      messages: messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
-      stream: true,
-      temperature: 0.8,
-      max_tokens: 2048,
-    });
+    const mcpTools = toolsToOpenAI();
+    const hasMcpTools = mcpTools.length > 0;
 
-    for await (const chunk of stream) {
-      const content = chunk.choices[0]?.delta?.content;
-      if (content) {
-        res.write(`data: ${JSON.stringify({ delta: content, done: false })}\n\n`);
+    const history: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+      ...messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+    ];
+
+    const MAX_TOOL_ROUNDS = 5;
+
+    for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      const requestParams: OpenAI.Chat.Completions.ChatCompletionCreateParams = {
+        model,
+        messages: history,
+        stream: true,
+        temperature: 0.8,
+        max_tokens: 2048,
+      };
+
+      if (hasMcpTools && round === 0) {
+        requestParams.tools = mcpTools as any;
+        requestParams.tool_choice = 'auto';
+      }
+
+      const stream = await getClient().chat.completions.create(requestParams);
+
+      let contentBuffer = '';
+      let toolCalls: Map<number, { id: string; name: string; args: string }> = new Map();
+
+      for await (const chunk of stream) {
+        const delta = chunk.choices[0]?.delta;
+
+        if (delta?.content) {
+          contentBuffer += delta.content;
+          writeSSE(res, { delta: delta.content, done: false });
+        }
+
+        if (delta?.tool_calls) {
+          for (const tc of delta.tool_calls) {
+            const idx = tc.index;
+            if (!toolCalls.has(idx)) {
+              toolCalls.set(idx, { id: tc.id || '', name: tc.function?.name || '', args: '' });
+            }
+            const entry = toolCalls.get(idx)!;
+            if (tc.id) entry.id = tc.id;
+            if (tc.function?.name) entry.name = tc.function.name;
+            if (tc.function?.arguments) entry.args += tc.function.arguments;
+          }
+        }
+      }
+
+      if (toolCalls.size === 0) {
+        writeSSE(res, { delta: '', done: true });
+        res.end();
+        return;
+      }
+
+      const toolCallEntries = Array.from(toolCalls.values());
+      writeSSE(res, { tool_calls: toolCallEntries.map(tc => ({ id: tc.id, name: tc.name, arguments: tc.args })), done: false });
+
+      const assistantMsg: OpenAI.Chat.Completions.ChatCompletionAssistantMessageParam = {
+        role: 'assistant',
+        content: contentBuffer || null,
+        tool_calls: toolCallEntries.map(tc => ({
+          id: tc.id,
+          type: 'function' as const,
+          function: { name: tc.name, arguments: tc.args },
+        })),
+      };
+      history.push(assistantMsg);
+
+      for (const tc of toolCallEntries) {
+        let args: Record<string, any> = {};
+        try { args = JSON.parse(tc.args); } catch { /* ignore */ }
+
+        writeSSE(res, { tool_progress: { id: tc.id, name: tc.name, status: 'running' }, done: false });
+
+        const result = await executeToolCall(tc.name, args);
+
+        writeSSE(res, { tool_result: { id: tc.id, name: tc.name, result }, done: false });
+
+        history.push({
+          role: 'tool',
+          tool_call_id: tc.id,
+          content: result,
+        });
       }
     }
-    res.write(`data: ${JSON.stringify({ delta: '', done: true })}\n\n`);
+
+    writeSSE(res, { delta: '', done: true });
     res.end();
   } catch (error) {
     const errMsg = formatError(error);
     console.error('[AI] Chat stream error:', errMsg);
-    res.write(`data: ${JSON.stringify({ error: errMsg, done: true })}\n\n`);
+    writeSSE(res, { error: errMsg, done: true });
     res.end();
   }
 }
+
+// ─── Generate Content (non-streaming) ────────────────────────────────────────
 
 export async function generateContent(
   systemPrompt: string,
   userPrompt: string,
 ): Promise<{ content: string; error?: string }> {
-  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-  const apiKey = process.env.OPENAI_API_KEY;
+  const aiConfig = getAiConfig();
+  const model = aiConfig.model || 'gpt-4o-mini';
+  const apiKey = aiConfig.apiKey;
 
   if (!apiKey || apiKey === 'sk-placeholder') {
-    const errMsg = 'AI 服务未配置：请在项目根目录创建 .env 文件并设置 OPENAI_API_KEY=你的API密钥\n获取免费API Key: https://platform.openai.com/api-keys';
-    console.warn('[AI] generateContent - API Key not configured');
-    return { content: '', error: errMsg };
+    return { content: '', error: 'AI 服务未配置：请在设置中配置 AI API Key' };
   }
 
   try {
-    const response = await getClient().chat.completions.create({
+    const mcpTools = toolsToOpenAI();
+    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ];
+
+    const requestParams: OpenAI.Chat.Completions.ChatCompletionCreateParams = {
       model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
+      messages,
       temperature: 0.8,
       max_tokens: 2048,
-    });
+    };
+
+    if (mcpTools.length > 0) {
+      (requestParams as any).tools = mcpTools;
+      (requestParams as any).tool_choice = 'auto';
+    }
+
+    let response = await getClient().chat.completions.create(requestParams);
+    const choice = response.choices[0];
+
+    if (choice?.message?.tool_calls?.length) {
+      messages.push(choice.message);
+
+      for (const tc of choice.message.tool_calls) {
+        let args: Record<string, any> = {};
+        try { args = JSON.parse(tc.function.arguments); } catch { /* ignore */ }
+        const result = await executeToolCall(tc.function.name, args);
+        messages.push({ role: 'tool', tool_call_id: tc.id, content: result });
+      }
+
+      response = await getClient().chat.completions.create({
+        model,
+        messages,
+        temperature: 0.8,
+        max_tokens: 2048,
+      });
+    }
+
     return { content: response.choices[0]?.message?.content || '' };
   } catch (error) {
     const errMsg = formatError(error);
