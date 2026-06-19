@@ -2,9 +2,20 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const logsDir = path.join(__dirname, '..', '..', 'logs');
+// __dirname is a CJS global in esbuild builds; undefined in ESM dev
+declare var __dirname: string | undefined;
+
+// INKFORGE_BUNDLED is injected by esbuild define at build time.
+// In production (SEA executable), place data alongside the executable.
+declare const INKFORGE_BUNDLED: boolean | undefined;
+
+const currentDirname = typeof __dirname !== 'undefined'
+  ? __dirname
+  : path.dirname(fileURLToPath(import.meta.url));
+
+const logsDir = typeof INKFORGE_BUNDLED !== 'undefined'
+  ? path.join(path.dirname(process.execPath), 'logs')
+  : path.join(currentDirname, '..', '..', 'logs');
 
 // Ensure logs directory exists
 if (!fs.existsSync(logsDir)) {

@@ -26,9 +26,12 @@ import configRoutes from './routes/config.js'
 import imageRoutes from './routes/image.js'
 import chatRoutes from './routes/chat.js'
 
-// for esm mode
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
+// __dirname is a CJS global in esbuild builds; undefined in ESM dev
+declare var __dirname: string | undefined;
+
+const currentDirname = typeof __dirname !== 'undefined'
+  ? __dirname
+  : path.dirname(fileURLToPath(import.meta.url));
 
 // Load config from config.json (replaces .env)
 loadConfig()
@@ -52,17 +55,6 @@ const app: express.Application = express()
 app.use(cors())
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
-
-// Serve static files in production
-if (process.env.NODE_ENV === 'production') {
-  const clientDist = path.join(__dirname, '..', 'dist');
-  app.use(express.static(clientDist));
-  app.get('*', (req: Request, res: Response) => {
-    if (!req.path.startsWith('/api')) {
-      res.sendFile(path.join(clientDist, 'index.html'));
-    }
-  });
-}
 
 /**
  * API Routes
@@ -92,6 +84,19 @@ app.use(
     })
   },
 )
+
+// Serve static files in production (after API routes so API takes priority)
+if (process.env.NODE_ENV === 'production') {
+  const clientDist = path.join(currentDirname, '..', 'dist');
+  app.use(express.static(clientDist));
+  app.get('*', (req: Request, res: Response, next: NextFunction) => {
+    if (!req.path.startsWith('/api')) {
+      res.sendFile(path.join(clientDist, 'index.html'));
+    } else {
+      next();
+    }
+  });
+}
 
 /**
  * error handler middleware

@@ -3,12 +3,36 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const dataDir = path.join(__dirname, '..', '..', 'data');
+// In bundled builds, __dirname is a CJS global.
+// In ESM dev (tsx), it's undefined and we derive it from import.meta.url.
+declare var __dirname: string | undefined;
+
+// INKFORGE_BUNDLED is injected by esbuild define at build time.
+// In production (SEA executable), place data alongside the executable.
+// In development, use data/ relative to the project root.
+declare const INKFORGE_BUNDLED: boolean | undefined;
+
+const currentDirname = typeof __dirname !== 'undefined'
+  ? __dirname
+  : path.dirname(fileURLToPath(import.meta.url));
+
+const dataDir = typeof INKFORGE_BUNDLED !== 'undefined'
+  ? path.join(path.dirname(process.execPath), 'data')
+  : path.join(currentDirname, '..', '..', 'data');
 const dbPath = path.join(dataDir, 'ward.db');
 
 let db: Database | null = null;
+
+// INKFORGE_WASM_BASE64 is injected by esbuild define at build time.
+// In development it's undefined, so sql.js falls back to its default locateFile.
+declare const INKFORGE_WASM_BASE64: string | undefined;
+
+function getWasmBinary(): Uint8Array | undefined {
+  if (typeof INKFORGE_WASM_BASE64 === 'string') {
+    return Uint8Array.from(Buffer.from(INKFORGE_WASM_BASE64, 'base64'));
+  }
+  return undefined;
+}
 
 export async function getDb(): Promise<Database> {
   if (db) return db;
@@ -17,7 +41,10 @@ export async function getDb(): Promise<Database> {
     fs.mkdirSync(dataDir, { recursive: true });
   }
 
-  const SQL = await initSqlJs();
+  const wasmBinary = getWasmBinary();
+  const SQL = wasmBinary
+    ? await initSqlJs({ wasmBinary })
+    : await initSqlJs();
 
   if (fs.existsSync(dbPath)) {
     const buffer = fs.readFileSync(dbPath);

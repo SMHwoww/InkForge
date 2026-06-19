@@ -11,9 +11,20 @@ import { fileURLToPath } from 'url';
 import { z } from 'zod';
 import { BUILTIN_SERVER_NAME } from './builtinTools.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const CONFIG_PATH = path.resolve(__dirname, '..', '..', 'config.json');
+// __dirname is a CJS global in esbuild builds; undefined in ESM dev
+declare var __dirname: string | undefined;
+
+// INKFORGE_BUNDLED is injected by esbuild define at build time.
+// In production (SEA executable), place data alongside the executable.
+declare const INKFORGE_BUNDLED: boolean | undefined;
+
+const currentDirname = typeof __dirname !== 'undefined'
+  ? __dirname
+  : path.dirname(fileURLToPath(import.meta.url));
+
+const CONFIG_PATH = typeof INKFORGE_BUNDLED !== 'undefined'
+  ? path.join(path.dirname(process.execPath), 'config.json')
+  : path.resolve(currentDirname, '..', '..', 'config.json');
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
