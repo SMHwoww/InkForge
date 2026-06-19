@@ -30,7 +30,16 @@ const targetArg = args.find(a => a.startsWith('--target='));
 const target = targetArg ? targetArg.split('=')[1] : 'win';
 
 const isWin = target === 'win';
-const outputExeName = `inkforge-backend${isWin ? '.exe' : ''}`;
+
+// Tauri 根据 externalBin 基础名自动拼接 Rust 目标三元组来查找 sidecar
+// 例如 binaries/inkforge-backend → binaries/inkforge-backend-x86_64-unknown-linux-gnu
+const targetTriples = {
+  win: 'x86_64-pc-windows-msvc',
+  linux: 'x86_64-unknown-linux-gnu',
+  mac: 'aarch64-apple-darwin',
+};
+const ext = isWin ? '.exe' : '';
+const outputExeName = `inkforge-backend-${targetTriples[target]}${ext}`;
 const outputPath = path.join(outputDir, outputExeName);
 
 // 确保输出目录存在
