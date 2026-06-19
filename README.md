@@ -1,6 +1,6 @@
 # 墨客工坊 — AI 写作助手
 
-全栈小说创作工具，内置 AI 辅助写作等多项实用工具
+全栈小说创作工具，内置 MCP 工具驱动的 AI 辅助写作。
 
 ## 技术栈
 
@@ -11,9 +11,10 @@
 | 状态管理 | Zustand |
 | 路由 | React Router v7 |
 | 编辑器 | TipTap |
-| AI | OpenAI API（流式 SSE） |
+| AI | OpenAI API（流式 SSE + Function Calling） |
+| MCP | 内置 MCP 服务 + 外部 MCP 服务（StreamableHTTP） |
 | 后端 | Express.js |
-| 数据库 | SQLite（sql.js / Drizzle ORM） |
+| 数据库 | SQLite（sql.js） |
 | Markdown | marked |
 
 ## 快速开始
@@ -41,14 +42,14 @@ InkForge/
 │   │   ├── index.ts               # 数据库初始化 & 迁移（sql.js）
 │   │   └── schema.ts              # Drizzle ORM Schema
 │   ├── routes/
-│   │   ├── ai.ts                  # AI 对话 / 生成角色 / 生成世界观
+│   │   ├── ai.ts                  # AI 对话流式接口（剥离前端 tool_calls）
 │   │   ├── auth.ts                # 认证相关
 │   │   ├── chapters.ts            # 章节 CRUD
 │   │   ├── characters.ts          # 角色 CRUD
-│   │   ├── chat.ts                # AI 聊天记录持久化
+│   │   ├── chat.ts                # AI 聊天记录持久化（含 tool_calls）
 │   │   ├── config.ts              # 全局配置管理
 │   │   ├── image.ts               # 真珠 AI 生图
-│   │   ├── mcp.ts                 # MCP 服务配置与热重载
+│   │   ├── mcp.ts                 # MCP 服务配置与热重载（内置服务保护）
 │   │   ├── outlines.ts            # 大纲 CRUD
 │   │   ├── projects.ts            # 项目 CRUD
 │   │   ├── relations.ts           # 关系图谱
@@ -56,11 +57,12 @@ InkForge/
 │   │   ├── timeline.ts            # 时间轴事件 / 视角 / 配置
 │   │   └── worldbuilding.ts       # 世界观条目
 │   ├── services/
-│   │   ├── aiService.ts           # OpenAI 流式聊天 & 生成
+│   │   ├── aiService.ts           # OpenAI 流式聊天 & 工具调用
+│   │   ├── builtinTools.ts        # 内置 MCP 工具服务（20+ inkforge_* 工具）
 │   │   ├── chapterService.ts
 │   │   ├── characterService.ts
 │   │   ├── logger.ts              # 日志服务
-│   │   ├── mcpClient.ts           # MCP 客户端（StreamableHTTP）
+│   │   ├── mcpClient.ts           # MCP 客户端（集成内置 + 外部工具）
 │   │   ├── mcpConfig.ts           # 统一配置管理（config.json）
 │   │   ├── outlineService.ts
 │   │   ├── projectService.ts
@@ -78,7 +80,7 @@ InkForge/
 │   │   └── react.svg
 │   ├── components/
 │   │   ├── ai/
-│   │   │   └── AIPanel.tsx        # 内嵌 AI 面板（大纲/时间轴复用）
+│   │   │   └── AIPanel.tsx        # 内嵌 AI 面板（大纲/时间轴复用，MCP 工具调用追踪）
 │   │   ├── layout/
 │   │   │   ├── AppLayout.tsx      # 应用布局
 │   │   │   └── Sidebar.tsx        # 侧边栏导航
@@ -92,11 +94,11 @@ InkForge/
 │   ├── hooks/
 │   │   └── useTheme.ts            # 主题 Hook
 │   ├── lib/
-│   │   ├── aido.ts                # AIdo 统一指令引擎（解析/剥离/提示词）
-│   │   ├── chat.ts                # SSE 流式聊天工具
+│   │   ├── aido.ts                # AIdo MCP 系统提示词构建（动态 builtinEnabled）
+│   │   ├── chat.ts                # SSE 流式聊天工具（MCP 工具调用事件）
 │   │   └── utils.ts               # 通用工具函数
 │   ├── pages/
-│   │   ├── AIAssistant.tsx        # AI 写作助手（AIDO 模式）
+│   │   ├── AIAssistant.tsx        # AI 写作助手（MCP 工具调用追踪）
 │   │   ├── ChapterEditor.tsx      # 正文编辑器（TipTap 富文本）
 │   │   ├── CharacterDetail.tsx    # 角色详情页
 │   │   ├── Characters.tsx         # 角色管理列表
@@ -110,12 +112,12 @@ InkForge/
 │   │   ├── Timeline.tsx           # 时间轴（网格拖拽+多视角+AI面板）
 │   │   └── Worldbuilding.tsx      # 世界观条目管理
 │   ├── stores/
-│   │   ├── chatStore.ts           # AI 聊天状态（projectId 隔离）
+│   │   ├── chatStore.ts           # AI 聊天状态（含 tool_calls 持久化）
 │   │   ├── moduleConfigStore.ts   # 模块配置状态（显示/隐藏/排序）
 │   │   ├── projectStore.ts        # 全局项目/角色/世界观/章节/大纲/时间轴状态
 │   │   └── toastStore.ts          # Toast 通知状态
 │   ├── types/
-│   │   └── index.ts               # TypeScript 类型定义
+│   │   └── index.ts               # TypeScript 类型定义（含 ToolCallRecord）
 │   ├── App.tsx                    # 路由配置
 │   ├── index.css                  # 全局样式 & Tailwind
 │   ├── main.tsx                   # 应用入口
@@ -138,9 +140,9 @@ InkForge/
 
 - **仪表盘** — 项目概览、写作进度
 - **项目管理** — 创建/管理小说项目
-- **AI 助手（AIDO）** — 智能续写、润色、扩写、大纲生成，支持直接操作项目数据（角色/世界观/星图/大纲/正文）
+- **AI 助手** — MCP 工具驱动的智能助手，AI 自主调用 `inkforge_*` 工具读取/创建/修改项目数据（章节、角色、世界观、星图、时间轴），支持智能续写、润色、扩写、大纲生成
 - **真珠生图** — AI 图像生成，支持阿里云百炼/OpenAI 接口，异步生成与轮询
-- **设置** — 可视化配置 AI 模型、API Key、MCP 服务，支持热重载
+- **设置** — 可视化配置 AI 模型、API Key、MCP 服务（内置 + 外部），支持热重载
 - **角色管理** — 角色信息、外貌、性格、背景
 - **世界观** — 地理、历史、势力、魔法体系等分类管理
 - **正文编辑** — 分章节写作，富文本编辑，支持 Markdown 快捷语法
@@ -151,4 +153,4 @@ InkForge/
 
 ## License
 
-本项目使用MIT许可证
+本项目使用 MIT 许可证
