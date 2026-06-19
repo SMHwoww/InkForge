@@ -20,7 +20,7 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 const apiDir = path.join(rootDir, 'api');
 const outputDir = path.join(rootDir, 'src-tauri', 'binaries');
-const bundlePath = path.join(outputDir, 'bundle.cjs');
+const bundlePath = path.join(outputDir, 'bundle.mjs');
 
 // 解析命令行参数
 const args = process.argv.slice(2);
@@ -49,7 +49,7 @@ try {
     bundle: true,
     platform: 'node',
     target: 'node18',
-    format: 'cjs',
+    format: 'esm',
     outfile: bundlePath,
     external: [
       // sql.js 需要原生模块，标记为外部依赖
@@ -71,12 +71,12 @@ try {
   process.exit(1);
 }
 
-console.log(`[2/2] 使用 pkg 编译为可执行文件 (${pkgTarget})...`);
+console.log(`[2/2] 使用 @yao-pkg/pkg 编译为可执行文件 (${pkgTarget})...`);
 
 try {
   const outputName = path.join(outputDir, `inkforge-backend`);
   execSync(
-    `npx pkg "${bundlePath}" --targets ${pkgTarget} --output "${outputName}"`,
+    `npx @yao-pkg/pkg "${bundlePath}" --targets ${pkgTarget} --output "${outputName}"`,
     { stdio: 'inherit', cwd: rootDir }
   );
 
@@ -89,7 +89,7 @@ try {
   const files = fs.readdirSync(outputDir);
   files.forEach(f => console.log(`    - ${f}`));
 } catch (err) {
-  console.error('pkg 编译失败:', err.message);
+  console.error('@yao-pkg/pkg 编译失败:', err.message);
   console.log('  提示：请确保已安装 @yao-pkg/pkg: npm install --save-dev @yao-pkg/pkg');
   process.exit(1);
 }
