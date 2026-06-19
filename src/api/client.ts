@@ -1,8 +1,23 @@
 import type { ApiResponse } from '@/types';
+import { isTauri, getBaseUrl } from '@/lib/tauri-env';
 
-const BASE_URL = '/api';
+let BASE_URL = '/api';
+let _initialized = false;
+
+/**
+ * 初始化 API 客户端基础地址
+ * - 开发环境：使用 Vite 代理的相对路径 /api
+ * - Tauri 生产环境：启动 Sidecar 后使用 http://127.0.0.1:{port}/api
+ */
+async function initBaseUrl(): Promise<void> {
+  if (_initialized) return;
+  const baseUrl = await getBaseUrl();
+  BASE_URL = baseUrl ? `${baseUrl}/api` : '/api';
+  _initialized = true;
+}
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
+  await initBaseUrl();
   const res = await fetch(`${BASE_URL}${url}`, {
     headers: { 'Content-Type': 'application/json' },
     ...options,

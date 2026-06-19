@@ -25,6 +25,9 @@ export default defineConfig({
     tsconfigPaths(),
   ],
   server: {
+    watch: {
+      ignored: ['**/src-tauri/target/**'],
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:3001',

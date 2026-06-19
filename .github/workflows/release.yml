@@ -1,0 +1,102 @@
+# .github/workflows/release.yml
+name: 'Release'
+
+on:
+  push:
+    branches:
+      - tauri
+  workflow_dispatch:
+
+jobs:
+  # 构建 Sidecar 后端
+  build-sidecar:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'ubuntu-22.04'
+            target: 'linux'
+          - platform: 'windows-latest'
+            target: 'win'
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Sidecar
+        run: npm run sidecar:build -- --target=${{ matrix.target }}
+
+      - name: Upload Sidecar artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sidecar-${{ matrix.target }}
+          path: src-tauri/binaries/
+
+  # 构建 Tauri 桌面应用
+  publish-tauri:
+    needs: build-sidecar
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'ubuntu-22.04'
+            args: ''
+          - platform: 'windows-latest'
+            args: ''
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
+
+      - name: Download Sidecar
+        uses: actions/download-artifact@v4
+        with:
+          name: sidecar-${{ matrix.platform == 'ubuntu-22.04' && 'linux' || 'win' }}
+          path: src-tauri/binaries/
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: ${{ matrix.args }}
+          tagName: v__VERSION__
+          releaseName: 'InkForge v__VERSION__'
+          releaseBody: |
+            ## 墨客工坊 v__VERSION__
+
+            ### 安装说明
+            - **Windows**: 下载 `.msi` 或 `.exe` 安装包
+            - **macOS**: 下载 `.dmg` 文件，拖入 Applications 文件夹
+            - **Linux**: 下载 `.AppImage` 或 `.deb` 包
+
+            ### 更新内容
+            见 [CHANGELOG](https://github.com/${{ github.repository }}/blob/tauri/CHANGELOG.md)
+          releaseDraft: false
+          prerelease: true
