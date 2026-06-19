@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { X, Plus, Trash2, RefreshCw, Loader2, CheckCircle2, XCircle, Plug, Sparkles, Server, Wrench, Globe, Terminal, Layers, GripVertical, Eye, EyeOff } from 'lucide-react';
+import { X, Plus, Trash2, RefreshCw, Loader2, CheckCircle2, XCircle, Plug, Sparkles, Server, Wrench, Globe, Terminal, Layers, GripVertical, Eye, EyeOff, AlertTriangle, Slash } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -24,6 +24,9 @@ interface McpServerConfig {
   command?: string;
   args?: string[];
   env?: Record<string, string>;
+  // built-in
+  builtin?: boolean;
+  disabled?: boolean;
 }
 
 interface McpToolInfo {
@@ -35,6 +38,8 @@ interface McpToolInfo {
 
 interface McpConfigData {
   enabled: boolean;
+  builtinEnabled: boolean;
+  builtinServerName: string;
   servers: McpServerConfig[];
   tools: McpToolInfo[];
 }
@@ -44,6 +49,7 @@ interface ReloadResult {
   success: boolean;
   toolCount: number;
   error?: string;
+  disabled?: boolean;
 }
 
 // ─── API ────────────────────────────────────────────────────────────────────
@@ -57,7 +63,7 @@ async function fetchMcpConfig(): Promise<McpConfigData> {
   return json.data;
 }
 
-async function saveMcpConfig(data: { enabled: boolean; servers: McpServerConfig[] }): Promise<{ reloadResults: ReloadResult[] }> {
+async function saveMcpConfig(data: { enabled: boolean; builtinEnabled: boolean; servers: McpServerConfig[] }): Promise<{ reloadResults: ReloadResult[] }> {
   const res = await fetch(`${BASE}/config`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -396,17 +402,20 @@ function McpConfigPanel() {
   const [saving, setSaving] = useState(false);
   const [reloading, setReloading] = useState(false);
   const [enabled, setEnabled] = useState(true);
+  const [builtinEnabled, setBuiltinEnabled] = useState(true);
   const [servers, setServers] = useState<McpServerConfig[]>([]);
   const [tools, setTools] = useState<McpToolInfo[]>([]);
   const [reloadMsg, setReloadMsg] = useState<ReloadResult[] | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [editIndex, setEditIndex] = useState<number | null>(null);
+  const [showBuiltinWarning, setShowBuiltinWarning] = useState(false);
 
   const loadConfig = useCallback(async () => {
     try {
       setLoading(true);
       const data = await fetchMcpConfig();
       setEnabled(data.enabled);
+      setBuiltinEnabled(data.builtinEnabled);
       setServers(data.servers);
       setTools(data.tools);
     } catch (e: any) {
@@ -422,7 +431,7 @@ function McpConfigPanel() {
     try {
       setSaving(true);
       setReloadMsg(null);
-      const result = await saveMcpConfig({ enabled, servers });
+      const result = await saveMcpConfig({ enabled, builtinEnabled, servers });
       setReloadMsg(result.reloadResults);
       addToast('配置已保存并热重载', 'success');
       const updated = await fetchMcpConfig();
@@ -446,7 +455,7 @@ function McpConfigPanel() {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [enabled, servers]);
+  }, [enabled, builtinEnabled, servers]);
 
   const handleReload = async () => {
     try {
@@ -481,7 +490,28 @@ function McpConfigPanel() {
   };
 
   const handleRemove = (index: number) => {
+    const server = servers[index];
+    if (server.builtin) {
+      addToast('内置 MCP 服务不可删除', 'info');
+      return;
+    }
     setServers(servers.filter((_, i) => i !== index));
+  };
+
+  const handleToggleDisabled = (idx: number) => {
+    const server = servers[idx];
+    if (server.builtin) {
+      if (builtinEnabled) {
+        setShowBuiltinWarning(true);
+      } else {
+        setBuiltinEnabled(true);
+        addToast('内置 MCP 服务已启用', 'success');
+      }
+    } else {
+      const updated = [...servers];
+      updated[idx] = { ...updated[idx], disabled: !updated[idx].disabled };
+      setServers(updated);
+    }
   };
 
   if (loading) {
@@ -529,12 +559,15 @@ function McpConfigPanel() {
                 key={r.name}
                 className={clsx(
                   'flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg',
+                  r.disabled ? 'bg-[#f5f0e8]/5 text-[#f5f0e8]/30' :
                   r.success ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400',
                 )}
               >
-                {r.success ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+                {r.disabled ? <Slash size={14} /> : r.success ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
                 <span className="font-medium">{r.name}</span>
-                {r.success ? (
+                {r.disabled ? (
+                  <span className="text-[#f5f0e8]/30">- 已禁用，跳过连接</span>
+                ) : r.success ? (
                   <span className="text-[#f5f0e8]/50">- {r.toolCount} 个工具</span>
                 ) : (
                   <span className="text-[#f5f0e8]/50">- {r.error}</span>
@@ -564,40 +597,76 @@ function McpConfigPanel() {
           </div>
         ) : (
           <div className="space-y-2">
-            {servers.map((server, idx) => (
+            {servers.map((server, idx) => {
+              const isDisabled = server.builtin ? !builtinEnabled : server.disabled;
+              return (
               <div
                 key={server.name + idx}
-                className="bg-[#1a1a2e]/40 border border-[#c9a96e]/6 rounded-lg px-4 py-3 flex items-center justify-between group hover:border-[#c9a96e]/20 transition-colors"
+                className={clsx(
+                  'bg-[#1a1a2e]/40 border border-[#c9a96e]/6 rounded-lg px-4 py-3 flex items-center justify-between group hover:border-[#c9a96e]/20 transition-colors',
+                  server.builtin && 'border-[#c9a96e]/20',
+                  isDisabled && 'opacity-50',
+                )}
               >
                 <div className="flex items-center gap-3">
-                  {server.type === 'remote' ? (
+                  {server.builtin ? (
+                    <Sparkles size={16} className="text-[#c9a96e]" />
+                  ) : server.type === 'remote' ? (
                     <Plug size={16} className="text-[#c9a96e]/60" />
                   ) : (
                     <Terminal size={16} className="text-[#f5f0e8]/40" />
                   )}
                   <div>
-                    <span className="text-sm font-medium text-[#f5f0e8]/90">{server.name}</span>
-                    <span className="text-xs text-[#f5f0e8]/40 ml-2">
-                      {server.type === 'remote' ? server.url : `${server.command} ${server.args?.join(' ') || ''}`}
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-[#f5f0e8]/90">{server.name}</span>
+                      {server.builtin && (
+                        <span className="text-[10px] text-[#c9a96e]/50 bg-[#c9a96e]/10 px-1.5 py-0.5 rounded-full">内置</span>
+                      )}
+                      {isDisabled && (
+                        <span className="text-[10px] text-red-400/50 bg-red-400/10 px-1.5 py-0.5 rounded-full flex items-center gap-1">
+                          <Slash size={10} /> 已禁用
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs text-[#f5f0e8]/40">
+                      {server.builtin ? '系统内置 MCP 服务，提供 InkForge 项目数据读写能力' :
+                       server.type === 'remote' ? server.url : `${server.command} ${server.args?.join(' ') || ''}`}
                     </span>
                   </div>
                 </div>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex items-center gap-1">
                   <button
-                    onClick={() => handleEdit(idx)}
-                    className="text-[#f5f0e8]/40 hover:text-[#c9a96e] p-1.5 transition-colors"
+                    onClick={() => handleToggleDisabled(idx)}
+                    className={clsx(
+                      'p-1.5 rounded-md transition-colors',
+                      !isDisabled
+                        ? 'text-[#c9a96e]/70 hover:text-[#c9a96e] hover:bg-[#c9a96e]/10'
+                        : 'text-red-400/70 hover:text-red-400 hover:bg-red-400/10',
+                    )}
+                    title={isDisabled ? '启用' : '禁用'}
                   >
-                    <Wrench size={14} />
+                    {isDisabled ? <EyeOff size={14} /> : <Eye size={14} />}
                   </button>
-                  <button
-                    onClick={() => handleRemove(idx)}
-                    className="text-[#f5f0e8]/40 hover:text-red-400 p-1.5 transition-colors"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  {!server.builtin && (
+                    <>
+                      <button
+                        onClick={() => handleEdit(idx)}
+                        className="text-[#f5f0e8]/40 hover:text-[#c9a96e] p-1.5 transition-colors opacity-0 group-hover:opacity-100"
+                      >
+                        <Wrench size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleRemove(idx)}
+                        className="text-[#f5f0e8]/40 hover:text-red-400 p-1.5 transition-colors opacity-0 group-hover:opacity-100"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
@@ -648,6 +717,56 @@ function McpConfigPanel() {
         initialData={editIndex !== null ? servers[editIndex] : null}
         editIndex={editIndex}
       />
+
+      {/* 禁用内置 MCP 服务警告 */}
+      {showBuiltinWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-[#1a1a2e] border border-[#c9a96e]/20 rounded-xl p-6 w-96 shadow-2xl">
+            <div className="flex items-start gap-3 mb-4">
+              <AlertTriangle size={24} className="text-[#c9a96e] flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="text-base font-semibold text-[#f5f0e8]">禁用内置 MCP 服务</h3>
+                <p className="text-sm text-[#f5f0e8]/50 mt-2 leading-relaxed">
+                  内置 MCP 服务提供 AI 对项目数据的读取和修改能力，是 <span className="text-[#c9a96e]">InkForge AIdo 功能的核心组件</span>。
+                </p>
+                <div className="mt-3 p-3 rounded-lg bg-[#c9a96e]/5 border border-[#c9a96e]/10">
+                  <p className="text-xs text-[#f5f0e8]/40 leading-relaxed">
+                    <span className="text-red-400 font-medium">警告：</span>
+                    禁用后，AI 将无法使用以下能力：
+                  </p>
+                  <ul className="mt-2 space-y-1 text-xs text-[#f5f0e8]/30">
+                    <li>· 列出和读取项目章节、大纲、角色、世界观</li>
+                    <li>· 创建、修改章节和世界观条目</li>
+                    <li>· 管理星图节点和连线</li>
+                    <li>· 创建时间轴事件</li>
+                  </ul>
+                  <p className="text-xs text-red-400/60 mt-2 leading-relaxed">
+                    这将严重影响 AI 创作助手的功能完整性，可能导致 AI 无法正确理解项目上下文。
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-4">
+              <button
+                onClick={() => setShowBuiltinWarning(false)}
+                className="px-4 py-2 rounded-lg text-sm text-[#f5f0e8]/70 hover:text-[#f5f0e8] hover:bg-[#f5f0e8]/5 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => {
+                  setBuiltinEnabled(false);
+                  setShowBuiltinWarning(false);
+                  addToast('内置 MCP 服务已禁用，AI 创作助手功能将受限', 'info');
+                }}
+                className="px-4 py-2 rounded-lg bg-red-900/30 border border-red-400/20 text-sm text-red-400 hover:bg-red-900/50 transition-colors"
+              >
+                确认禁用
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

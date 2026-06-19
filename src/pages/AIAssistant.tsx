@@ -4,27 +4,22 @@ import { useChatStore } from '@/stores/chatStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { api } from '@/api/client';
 import { Button } from '@/components/ui/Button';
-import { streamChatCompletion } from '@/lib/chat';
+import { streamChatCompletion, type ToolCall, type ToolProgress, type ToolResult } from '@/lib/chat';
 import {
-  type AIdoAction,
-  AIDO_TYPE_META,
-  stripAIdoInstructions,
-  parseAIdoInstructions,
+  type ToolCallDisplay,
+  TOOL_LABELS,
   buildAIdoSystemPrompt,
 } from '@/lib/aido';
 import type { ChatMessage } from '@/types';
+import type { ToolCallRecord } from '@/types';
 import { marked } from 'marked';
-import { Send, Sparkles, Lightbulb, FileText, Pencil, Wand2, Zap, Trash2, Loader2, CheckSquare, Square, ChevronDown, ChevronRight, Bot, Globe, BookOpen, ListTree, Play, Stars, Timer, Copy, RefreshCw, Image as ImageIcon } from 'lucide-react';
+import { Send, Sparkles, Lightbulb, FileText, Pencil, Wand2, Zap, Trash2, Loader2, Copy, RefreshCw, Image as ImageIcon, Wrench, CheckCircle, XCircle } from 'lucide-react';
 import { clsx } from 'clsx';
 
 // Configure marked
 marked.setOptions({ breaks: true, gfm: true });
 
 function renderMarkdown(text: string): string {
-  return marked.parse(text) as string;
-}
-
-function renderMarkdownToHtml(text: string): string {
   return marked.parse(text) as string;
 }
 
@@ -36,59 +31,21 @@ const quickActions = [
   { label: '扩写', icon: Zap, prompt: '请帮我扩写以下内容，增加细节描写' },
 ];
 
-const aidoIconMap: Record<string, React.ReactNode> = {
-  EDIT: <BookOpen size={12} />,
-  OUTLINE: <ListTree size={12} />,
-  WORLDBUILD: <Globe size={12} />,
-  STARCHART: <Stars size={12} />,
-  TIMELINE: <Timer size={12} />,
-  PLACEHOLDER: <Bot size={12} />,
-};
-
-interface SelectableItem {
-  id: string;
-  label: string;
-  description: string;
-  type: string;
-}
-
 export default function AIAssistant() {
   const { id } = useParams<{ id: string }>();
   const projectId = Number(id);
-  const { messages, isStreaming, addMessage, setStreaming, clearMessages, updateLastAssistant, removeMessage } = useChatStore();
+  const { messages, isStreaming, addMessage, setStreaming, clearMessages, updateLastAssistant, setLastAssistantToolCalls, removeMessage } = useChatStore();
   const {
-    characters, worldbuilding, chapters,
-    timelineEvents, outlines,
     fetchCharacters, fetchWorldbuilding, fetchChapters,
     fetchTimeline, fetchOutlines,
-    createChapter, createOutline, createWorldbuilding, createTimelineEvent,
   } = useProjectStore();
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // AIdo is always on
-  const [executingAction, setExecutingAction] = useState<string | null>(null);
-
-  // Star chart: pending connect action when target node doesn't exist
-  const [pendingConnect, setPendingConnect] = useState<{
-    nodeName: string;
-    nodeType: 'source' | 'target';
-    action: any;
-    projectId: number;
-  } | null>(null);
-  const [creatingNodeName, setCreatingNodeName] = useState('');
-  const [creatingNodeDesc, setCreatingNodeDesc] = useState('');
-  const [creatingNodeLoading, setCreatingNodeLoading] = useState(false);
-
-  // Context selection state
-  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['characters', 'worldbuilding', 'chapters']));
-  const [contextPanelOpen, setContextPanelOpen] = useState(false);
-  const contextPanelRef = useRef<HTMLDivElement>(null);
-
-  // Star chart data for context
-  const [starChartData, setStarChartData] = useState<{ nodes: any[]; edges: any[] } | null>(null);
+  // MCP 工具调用追踪
+  const [toolCalls, setToolCalls] = useState<Map<string, ToolCallDisplay>>(new Map());
+  const [builtinEnabled, setBuiltinEnabled] = useState(true);
 
   // Tab state
   const [activeTab, setActiveTab] = useState<'chat' | 'image'>('chat');
@@ -111,315 +68,104 @@ export default function AIAssistant() {
       fetchChapters(projectId);
       fetchTimeline(projectId);
       fetchOutlines(projectId);
-      // Load star chart data for context
-      fetch('/api/projects/' + projectId + '/starchart')
-        .then(r => r.json())
-        .then(d => {
-          if (d.code === 0 && d.data) {
-            setStarChartData(d.data);
-          }
-        })
-        .catch(() => {});
     }
   }, [projectId]);
+
+  // Fetch MCP config to check builtinEnabled status
+  useEffect(() => {
+    fetch('/api/mcp/config')
+      .then(r => r.json())
+      .then(d => {
+        if (d.code === 0 && d.data) {
+          setBuiltinEnabled(d.data.builtinEnabled);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Context panel edge detection: show when mouse is near the right screen edge
-  useEffect(() => {
-    const EDGE_THRESHOLD = 30; // px from right edge
-    const handleMouseMove = (e: MouseEvent) => {
-      if (e.clientX >= window.innerWidth - EDGE_THRESHOLD) {
-        setContextPanelOpen(true);
-      }
-    };
-    window.addEventListener('mousemove', handleMouseMove);
-    return () => window.removeEventListener('mousemove', handleMouseMove);
-  }, []);
+  const handleSend = async (text?: string) => {
+    const content = text || input.trim();
+    if (!content || isStreaming) return;
 
-  // Auto-hide context panel when mouse leaves it
-  const handleContextPanelLeave = () => {
-    setContextPanelOpen(false);
-  };
+    const systemPrompt = buildAIdoSystemPrompt(projectId, builtinEnabled);
 
-  // Build all selectable items including star chart
-  const allItems: { group: string; groupLabel: string; items: SelectableItem[] }[] = [
-    {
-      group: 'characters',
-      groupLabel: '角色',
-      items: characters.map(c => ({ id: `char-${c.id}`, label: c.name, description: c.role || '', type: '角色' })),
-    },
-    {
-      group: 'worldbuilding',
-      groupLabel: '世界观',
-      items: worldbuilding.map(w => ({ id: `wb-${w.id}`, label: w.title, description: w.category || '', type: '世界观' })),
-    },
-    {
-      group: 'chapters',
-      groupLabel: '章节',
-      items: chapters.map(c => ({ id: `ch-${c.id}`, label: c.title, description: `${c.wordCount || 0}字`, type: '章节' })),
-    },
-    {
-      group: 'starchart',
-      groupLabel: '星图',
-      items: starChartData ? [
-        ...(starChartData.nodes || []).map((n: any) => ({
-          id: `star-${n.id}`,
-          label: n.name,
-          description: n.entityType === 'character' ? '角色节点' : n.entityType === 'worldbuilding' ? '世界观节点' : '自定义节点',
-          type: '星图节点',
-        })),
-        ...(starChartData.edges || []).map((e: any, i: number) => {
-          const src = starChartData.nodes?.find((n: any) => n.id === e.sourceNodeId);
-          const tgt = starChartData.nodes?.find((n: any) => n.id === e.targetNodeId);
-          return {
-            id: `star-edge-${e.id || i}`,
-            label: `${src?.name || '?'} → ${tgt?.name || '?'}`,
-            description: `${e.relationType}: ${e.label || ''}`,
-            type: '星图连线',
-          };
-        }),
-      ] : [],
-    },
-    {
-      group: 'timeline',
-      groupLabel: '时间轴',
-      items: timelineEvents.map(e => ({ id: `tl-${e.id}`, label: e.title, description: e.category || '', type: '时间轴事件' })),
-    },
-    {
-      group: 'outlines',
-      groupLabel: '大纲',
-      items: outlines.map(o => ({ id: `ol-${o.id}`, label: o.title, description: `层级: ${o.level}`, type: '大纲条目' })),
-    },
-  ];
-
-  const toggleItem = (itemId: string) => {
-    setSelectedItems(prev => {
-      const next = new Set(prev);
-      if (next.has(itemId)) next.delete(itemId);
-      else next.add(itemId);
-      return next;
-    });
-  };
-
-  const toggleGroup = (group: string, items: SelectableItem[]) => {
-    setSelectedItems(prev => {
-      const next = new Set(prev);
-      const allSelected = items.every(i => next.has(i.id));
-      if (allSelected) {
-        items.forEach(i => next.delete(i.id));
-      } else {
-        items.forEach(i => next.add(i.id));
-      }
-      return next;
-    });
-  };
-
-  const toggleExpand = (group: string) => {
-    setExpandedGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(group)) next.delete(group);
-      else next.add(group);
-      return next;
-    });
-  };
-
-  const buildContextPrompt = (): string => {
-    const parts: string[] = [];
-    for (const group of allItems) {
-      const selected = group.items.filter(i => selectedItems.has(i.id));
-      if (selected.length === 0) continue;
-      parts.push(`\n【${group.groupLabel}】`);
-      for (const item of selected) {
-        parts.push(`- ${item.label}${item.description ? ` (${item.description})` : ''}`);
-      }
-      // For star chart, also include edge relationships
-      if (group.group === 'starchart' && starChartData) {
-        const selectedStarIds = new Set(selected.map(s => s.id.replace('star-', '')));
-        const relevantEdges = (starChartData.edges || []).filter((e: any) => {
-          const srcId = String(starChartData.nodes?.find((n: any) => n.id === e.sourceNodeId)?.id);
-          const tgtId = String(starChartData.nodes?.find((n: any) => n.id === e.targetNodeId)?.id);
-          return selectedStarIds.has(srcId) || selectedStarIds.has(tgtId);
-        });
-        if (relevantEdges.length > 0) {
-          parts.push('  星图连线关系：');
-          for (const e of relevantEdges) {
-            const src = starChartData.nodes?.find((n: any) => n.id === e.sourceNodeId);
-            const tgt = starChartData.nodes?.find((n: any) => n.id === e.targetNodeId);
-            if (src && tgt) {
-              parts.push(`  · ${src.name} → ${tgt.name}：${e.relationType}${e.label ? ` (${e.label})` : ''}`);
-            }
-          }
-        }
-      }
-    }
-    return parts.length > 0 ? `\n\n当前创作上下文：${parts.join('\n')}` : '';
-  };
-
-  // Execute an AIdo action
-  const executeAIdoAction = async (action: AIdoAction) => {
-    setExecutingAction(`${action.type}-${action.title}`);
-    try {
-      if (action.type === 'EDIT') {
-        // Convert markdown to HTML for Tiptap editor
-        const htmlContent = renderMarkdownToHtml(action.content || '');
-        await createChapter(projectId, { title: action.title, content: htmlContent, orderNum: chapters.length });
-        await fetchChapters(projectId);
-      } else if (action.type === 'OUTLINE') {
-        await createOutline(projectId, { title: action.title, description: action.content });
-      } else if (action.type === 'WORLDBUILD') {
-        await createWorldbuilding(projectId, { title: action.title, content: action.content, category: '通用' });
-        await fetchWorldbuilding(projectId);
-      } else if (action.type === 'STARCHART') {
-        if (action.action === 'add' && action.title) {
-          await fetch('/api/projects/' + projectId + '/starchart/nodes', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              entityType: 'custom',
-              name: action.title,
-              description: action.content,
-              x: Math.random() * 200 - 100,
-              y: Math.random() * 200 - 100,
-            }),
-          });
-        } else if (action.action === 'connect' && action.title) {
-          // action.title = "nodeA->nodeB", action.content = relationType|label
-          const [aName, bName] = action.title.split('->').map(s => s.trim());
-          const relationParts = (action.content || 'other|').split('|');
-          const relationType = relationParts[0] || 'other';
-          const label = relationParts[1] || '';
-          // Find node dbIds by name in star chart data
-          if (aName && bName) {
-            const nodeA = starChartData?.nodes?.find((n: any) => n.name === aName);
-            const nodeB = starChartData?.nodes?.find((n: any) => n.name === bName);
-
-            if (!nodeA || !nodeB) {
-              // Show prompt to create missing node
-              const missingName = !nodeA ? aName : bName;
-              const missingType: 'source' | 'target' = !nodeA ? 'source' : 'target';
-              setPendingConnect({
-                nodeName: missingName,
-                nodeType: missingType,
-                action,
-                projectId,
-              });
-              setCreatingNodeName(missingName);
-              setCreatingNodeDesc('');
-              setExecutingAction(null);
-              return;
-            }
-
-            if (nodeA && nodeB) {
-              await fetch('/api/projects/' + projectId + '/starchart/edges', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  sourceNodeId: nodeA.id,
-                  targetNodeId: nodeB.id,
-                  relationType,
-                  label,
-                  description: '',
-                }),
-              });
-            }
-          }
-        }
-      } else if (action.type === 'TIMELINE') {
-        await createTimelineEvent(projectId, { title: action.title, content: action.content, category: '重大事件', placed: 0 });
-        await fetchTimeline(projectId);
-      } else if (action.type === 'PLACEHOLDER') {
-        // Placeholder: send a follow-up request to AI to actually execute
-        executePlaceholder(action);
-        return; // Don't clear executingAction yet
-      }
-    } catch (e) {
-      console.error('AIdo action failed:', e);
-    }
-    setExecutingAction(null);
-  };
-
-  // Create missing node and complete the pending connection
-  const handleCreateMissingNode = async () => {
-    if (!pendingConnect || !creatingNodeName.trim()) return;
-    setCreatingNodeLoading(true);
-    try {
-      // Create the node
-      const res = await fetch('/api/projects/' + pendingConnect.projectId + '/starchart/nodes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          entityType: 'custom',
-          name: creatingNodeName.trim(),
-          description: creatingNodeDesc.trim(),
-          x: Math.random() * 200 - 100,
-          y: Math.random() * 200 - 100,
-        }),
-      });
-      const json = await res.json();
-      if (json.code !== 0) throw new Error(json.message || '创建节点失败');
-
-      // Refresh star chart data
-      const starRes = await fetch('/api/projects/' + pendingConnect.projectId + '/starchart');
-      const starJson = await starRes.json();
-      if (starJson.code === 0 && starJson.data) {
-        setStarChartData(starJson.data);
-
-        // Now execute the connect action again with fresh data
-        const action = pendingConnect.action;
-        const [aName, bName] = action.title.split('->').map((s: string) => s.trim());
-        const relationParts = (action.content || 'other|').split('|');
-        const relationType = relationParts[0] || 'other';
-        const label = relationParts[1] || '';
-
-        const nodeA = starJson.data.nodes?.find((n: any) => n.name === aName);
-        const nodeB = starJson.data.nodes?.find((n: any) => n.name === bName);
-
-        if (nodeA && nodeB) {
-          await fetch('/api/projects/' + pendingConnect.projectId + '/starchart/edges', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              sourceNodeId: nodeA.id,
-              targetNodeId: nodeB.id,
-              relationType,
-              label,
-              description: '',
-            }),
-          });
-        }
-      }
-    } catch (e: any) {
-      console.error('Create missing node failed:', e);
-    }
-    setPendingConnect(null);
-    setCreatingNodeLoading(false);
-  };
-
-  // Execute a placeholder (deferred task)
-  const executePlaceholder = async (action: AIdoAction) => {
-    const contextPrompt = buildContextPrompt();
-    const prompt = `请执行以下任务：${action.title}\n\n${action.content ? '任务描述：' + action.content : ''}`;
-    const fullContent = contextPrompt ? `${prompt}\n\n[上下文]\n${contextPrompt}` : prompt;
-
-    const userMsg: ChatMessage = { role: 'user', content: `[执行任务] ${action.title}` };
+    const userMsg: ChatMessage = { role: 'user', content };
     addMessage(userMsg);
+    setInput('');
     setStreaming(true);
 
     const assistantMsg: ChatMessage = { role: 'assistant', content: '' };
     addMessage(assistantMsg);
 
+    // 重置工具调用追踪
+    setToolCalls(new Map());
+
     await streamChatCompletion({
       projectId,
-      messages: [...messages, { role: 'user', content: fullContent }],
-      context: { selectedCount: selectedItems.size },
+      messages: [...messages, { role: 'user', content: systemPrompt + '\n\n用户请求：' + content }],
       onDelta: (fullText) => updateLastAssistant(fullText),
       onError: (err) => updateLastAssistant(err),
+      onToolCalls: (calls: ToolCall[]) => {
+        setToolCalls(prev => {
+          const next = new Map(prev);
+          for (const tc of calls) {
+            let parsedArgs = tc.arguments;
+            try { parsedArgs = JSON.stringify(JSON.parse(tc.arguments), null, 2); } catch {}
+            next.set(tc.id, {
+              id: tc.id,
+              name: tc.name,
+              args: parsedArgs,
+              status: 'running',
+              label: TOOL_LABELS[tc.name] || tc.name,
+            });
+          }
+          return next;
+        });
+      },
+      onToolProgress: (progress: ToolProgress) => {
+        setToolCalls(prev => {
+          const next = new Map(prev);
+          const existing = next.get(progress.id);
+          if (existing) {
+            next.set(progress.id, { ...existing, status: progress.status === 'running' ? 'running' : existing.status });
+          }
+          return next;
+        });
+      },
+      onToolResult: (result: ToolResult) => {
+        setToolCalls(prev => {
+          const next = new Map(prev);
+          const existing = next.get(result.id);
+          if (existing) {
+            const isError = result.result.startsWith('Error');
+            next.set(result.id, {
+              ...existing,
+              status: isError ? 'error' : 'done',
+              result: result.result,
+            });
+          }
+          // 持久化工具调用记录到消息
+          const records: ToolCallRecord[] = [];
+          next.forEach(tc => {
+            records.push({
+              id: tc.id,
+              name: tc.name,
+              args: tc.args,
+              result: tc.result,
+              status: tc.status,
+            });
+          });
+          setLastAssistantToolCalls(records);
+          return next;
+        });
+      },
     });
+
     setStreaming(false);
-    setExecutingAction(null);
   };
 
   // Image generation
@@ -485,33 +231,6 @@ export default function AIAssistant() {
     return () => clearInterval(interval);
   }, [imageTaskId, imagePollingStatus]);
 
-  const handleSend = async (text?: string) => {
-    const content = text || input.trim();
-    if (!content || isStreaming) return;
-
-    const contextPrompt = buildContextPrompt();
-    const extraContext = contextPrompt ? `\n\n当前创作上下文：${contextPrompt}` : '';
-    const fullContent = buildAIdoSystemPrompt(`${content}${extraContext}`);
-
-    const userMsg: ChatMessage = { role: 'user', content };
-    addMessage(userMsg);
-    setInput('');
-    setStreaming(true);
-
-    const assistantMsg: ChatMessage = { role: 'assistant', content: '' };
-    addMessage(assistantMsg);
-
-    await streamChatCompletion({
-      projectId,
-      messages: [...messages, { role: 'user', content: fullContent }],
-      context: { selectedCount: selectedItems.size },
-      onDelta: (fullText) => updateLastAssistant(fullText),
-      onError: (err) => updateLastAssistant(err),
-    });
-
-    setStreaming(false);
-  };
-
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -552,7 +271,7 @@ export default function AIAssistant() {
     removeMessage(index);
   };
 
-  // Render message content with markdown and AIdo actions
+  // Render message content with markdown and tool call display
   const renderMessageContent = (msg: ChatMessage, msgIndex: number) => {
     const isLastAssistant = msg.role === 'assistant' && isStreaming && msgIndex === messages.length - 1;
 
@@ -565,59 +284,69 @@ export default function AIAssistant() {
       );
     }
 
-    // Parse AIdo instructions
-    const aidoActions = parseAIdoInstructions(msg.content);
-    const cleanContent = stripAIdoInstructions(msg.content);
+    // 流式传输中：使用实时 toolCalls Map；非流式：使用消息中持久化的 tool_calls
+    const msgToolCalls = isStreaming && isLastAssistant
+      ? Array.from(toolCalls.values())
+      : (msg.tool_calls || []).map(tc => ({
+          id: tc.id,
+          name: tc.name,
+          args: tc.args,
+          status: tc.status as 'running' | 'done' | 'error',
+          result: tc.result,
+          label: TOOL_LABELS[tc.name] || tc.name,
+        }));
 
     return (
       <div className="space-y-3">
         {/* Render markdown */}
         <div
-          className="text-sm leading-relaxed prose-aido prose-strong:text-[#f5f0e8] prose-code:text-[#c9a96e] prose-code:bg-[#c9a96e]/5 prose-code:px-1 prose-code:py-0.5 prose-code:rounded"
-          dangerouslySetInnerHTML={{ __html: renderMarkdown(cleanContent) }}
+          className="text-sm leading-relaxed prose-aido prose-strong:text-[#f5f0e8] prose-code:text-[#c9a96e] prose-code:bg-[#c9a96e]/5 prose-code:px-1 prose-code:py-0.5 prose-code:rounded break-words"
+          dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
         />
 
-        {/* AIdo action buttons */}
-        {aidoActions.length > 0 && (
+        {/* MCP 工具调用状态 */}
+        {msgToolCalls.length > 0 && msg.role === 'assistant' && (
           <div className="border-t border-[#c9a96e]/10 pt-2 space-y-1.5">
-            <p className="text-[10px] text-[#c9a96e]/40 uppercase tracking-wider">AIdo 指令</p>
-            {aidoActions.map((action, i) => {
-              const isExecuting = executingAction === `${action.type}-${action.title}`;
-              const meta = AIDO_TYPE_META[action.type] || { label: action.type, color: 'bg-[#c9a96e]/5' };
-              const colorMap: Record<string, string> = {
-                EDIT: 'bg-[#c9a96e]/5',
-                OUTLINE: 'bg-[#7dc9a9]/5',
-                WORLDBUILD: 'bg-[#7da8c9]/5',
-                STARCHART: 'bg-[#e8a8c9]/5',
-                TIMELINE: 'bg-[#d4a87d]/5',
-                PLACEHOLDER: 'bg-orange-900/15 border border-orange-400/15',
-              };
-              return (
-                <div key={i} className={`flex items-center gap-2 rounded-lg px-3 py-2 ${colorMap[action.type] || 'bg-[#c9a96e]/5'}`}>
-                  <span className="text-[#c9a96e]/70">{aidoIconMap[action.type]}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-[#f5f0e8]/70 truncate">
-                      <span className="text-[#c9a96e]/40">{meta.label}</span> — {action.title}
-                    </p>
-                    {action.content && (
-                      <p className="text-[10px] text-[#f5f0e8]/30 truncate">{action.content.slice(0, 60)}</p>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => executeAIdoAction(action)}
-                    disabled={isExecuting}
-                    className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors disabled:opacity-50 ${
-                      action.type === 'PLACEHOLDER'
-                    ? 'bg-orange-900/30 text-orange-400 hover:bg-orange-900/50'
-                    : 'bg-[#c9a96e]/20 text-[#c9a96e] hover:bg-[#c9a96e]/30'
-                }`}
+            <p className="text-[10px] text-[#c9a96e]/40 uppercase tracking-wider flex items-center gap-1">
+              <Wrench size={10} /> MCP 工具调用
+            </p>
+            {msgToolCalls.map((tc) => (
+              <div
+                key={tc.id}
+                className={clsx(
+                  'flex items-center gap-2 rounded-lg px-3 py-2',
+                  tc.status === 'running' && 'bg-[#c9a96e]/10',
+                  tc.status === 'done' && 'bg-[#7dc9a9]/10',
+                  tc.status === 'error' && 'bg-red-900/10',
+                )}
               >
-                {isExecuting ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
-                {action.type === 'PLACEHOLDER' ? '执行任务' : '执行'}
-                  </button>
+                <span className={clsx(
+                  'flex-shrink-0',
+                  tc.status === 'running' && 'text-[#c9a96e]/70',
+                  tc.status === 'done' && 'text-[#7dc9a9]',
+                  tc.status === 'error' && 'text-red-400',
+                )}>
+                  {tc.status === 'running' ? <Loader2 size={12} className="animate-spin" /> :
+                   tc.status === 'done' ? <CheckCircle size={12} /> :
+                   <XCircle size={12} />}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-[#f5f0e8]/70 truncate">
+                    {tc.label || tc.name}
+                  </p>
+                  {tc.status === 'done' && tc.result && (
+                    <p className="text-[10px] text-[#f5f0e8]/40 truncate mt-0.5">
+                      {tc.result.length > 100 ? tc.result.slice(0, 100) + '...' : tc.result}
+                    </p>
+                  )}
+                  {tc.status === 'error' && tc.result && (
+                    <p className="text-[10px] text-red-400/60 truncate mt-0.5">
+                      {tc.result}
+                    </p>
+                  )}
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -633,11 +362,6 @@ export default function AIAssistant() {
             <h1 className="text-lg font-semibold text-[#f5f0e8] flex items-center gap-2">
               AI 写作助手
             </h1>
-            {activeTab === 'chat' && selectedItems.size > 0 && (
-              <span className="text-xs text-[#c9a96e]/60 bg-[#c9a96e]/10 px-2 py-0.5 rounded-full">
-                已选 {selectedItems.size} 项上下文
-              </span>
-            )}
           </div>
           <div className="flex items-center gap-1">
             <button
@@ -676,13 +400,13 @@ export default function AIAssistant() {
         {activeTab === 'chat' && (
         <>
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden px-6 py-4 space-y-4">
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center">
                 <Sparkles size={48} className="text-[#c9a96e]/20 mb-4" />
                 <h2 className="text-lg font-semibold text-[#f5f0e8]/60 mb-2">AI 写作助手</h2>
                 <p className="text-sm text-[#f5f0e8]/30 max-w-md mb-6">
-                  我可以帮你续写剧情、润色文字、生成大纲、激发灵感等。在右侧面板选择要提交的上下文信息。AI 可以直接操作你的创作内容，回复中会包含可执行指令，用于创建正文、大纲、世界观条目或星图节点。
+                  我可以帮你续写剧情、润色文字、生成大纲、激发灵感等。AI 可以通过内置工具自主查询和操作你的创作内容，包括创建章节、大纲、世界观条目、角色、星图节点和时间轴事件。
                 </p>
                 <div className="flex flex-wrap justify-center gap-2 max-w-lg">
                   {quickActions.map(action => (
@@ -714,7 +438,7 @@ export default function AIAssistant() {
                     {msg.role === 'assistant' && msg.content && !isStreaming && (
                       <div className="flex items-center gap-1 mt-2 pt-2 border-t border-[#c9a96e]/10">
                         <button
-                          onClick={() => handleCopy(stripAIdoInstructions(msg.content))}
+                          onClick={() => handleCopy(msg.content)}
                           className="p-1 rounded-md text-[#f5f0e8]/30 hover:text-[#c9a96e] hover:bg-[#c9a96e]/10 transition-colors"
                           title="复制"
                         >
@@ -782,7 +506,7 @@ export default function AIAssistant() {
       )}
 
       {activeTab === 'image' && (
-        <div className="flex-1 overflow-y-auto px-6 py-4">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-6 py-4">
           <div className="max-w-2xl mx-auto space-y-6">
             <div className="text-center">
               <ImageIcon size={36} className="text-[#c9a96e]/30 mx-auto mb-2" />
@@ -903,157 +627,6 @@ export default function AIAssistant() {
       )}
       </div>
 
-      {/* Context Selection Panel — slides in from right edge, hides on leave */}
-      {activeTab === 'chat' && (
-        <div
-          ref={contextPanelRef}
-          onMouseLeave={handleContextPanelLeave}
-          className={clsx(
-            'bg-[#1a1a2e]/95 border-l border-[#c9a96e]/10 overflow-y-auto overflow-x-hidden shrink-0 transition-all duration-300 ease-in-out',
-            contextPanelOpen ? 'w-72 opacity-100' : 'w-0 opacity-0 border-l-0',
-          )}
-        >
-          <div className="p-4">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-[#f5f0e8]">选择上下文</h3>
-              <button
-                onClick={() => setSelectedItems(new Set())}
-                className="text-xs text-[#f5f0e8]/30 hover:text-[#f5f0e8]/60"
-              >
-                清空
-              </button>
-            </div>
-            <p className="text-xs text-[#f5f0e8]/30 mb-4">
-              勾选要提交给AI的上下文信息，未勾选的不会被发送。
-            </p>
-          </div>
-
-          <div className="space-y-1 px-2">
-            {allItems.map(group => {
-              const groupSelected = group.items.filter(i => selectedItems.has(i.id)).length;
-              if (group.items.length === 0) return null;
-              return (
-                <div key={group.group} className="mb-1">
-                  <button
-                    onClick={() => toggleExpand(group.group)}
-                    className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-[#f5f0e8]/5 transition-colors"
-                  >
-                    {expandedGroups.has(group.group) ? (
-                      <ChevronDown size={14} className="text-[#f5f0e8]/30" />
-                    ) : (
-                      <ChevronRight size={14} className="text-[#f5f0e8]/30" />
-                    )}
-                    <span className="text-xs text-[#f5f0e8]/50 flex-1 text-left">
-                      {group.groupLabel}
-                    </span>
-                    <span className="text-[10px] text-[#f5f0e8]/25">
-                      {groupSelected}/{group.items.length}
-                    </span>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); toggleGroup(group.group, group.items); }}
-                      className="p-0.5 rounded hover:bg-[#f5f0e8]/10"
-                    >
-                      {groupSelected === group.items.length && group.items.length > 0 ? (
-                        <CheckSquare size={14} className="text-[#c9a96e]/60" />
-                      ) : (
-                        <Square size={14} className="text-[#f5f0e8]/20" />
-                      )}
-                    </button>
-                  </button>
-
-                  {expandedGroups.has(group.group) && (
-                    <div className="ml-5 space-y-0.5 mb-1">
-                      {group.items.slice(0, 20).map(item => (
-                        <button
-                          key={item.id}
-                          onClick={() => toggleItem(item.id)}
-                          className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-[#f5f0e8]/5 transition-colors"
-                        >
-                          {selectedItems.has(item.id) ? (
-                            <CheckSquare size={13} className="text-[#c9a96e] flex-shrink-0" />
-                          ) : (
-                            <Square size={13} className="text-[#f5f0e8]/15 flex-shrink-0" />
-                          )}
-                          <div className="flex-1 min-w-0 text-left">
-                            <span className="text-xs text-[#f5f0e8]/60 block truncate">
-                              {item.label}
-                            </span>
-                            {item.description && (
-                              <span className="text-[10px] text-[#f5f0e8]/25 block truncate">
-                                {item.description}
-                              </span>
-                            )}
-                          </div>
-                        </button>
-                      ))}
-                      {group.items.length > 20 && (
-                        <p className="text-[10px] text-[#f5f0e8]/20 px-2 py-1">
-                          还有 {group.items.length - 20} 项...
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Create missing star chart node for connection */}
-      {pendingConnect && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-[#1a1a2e] border border-[#c9a96e]/20 rounded-xl p-6 w-96 shadow-2xl">
-            <h3 className="text-lg font-semibold text-[#f5f0e8] mb-2">
-              <Stars size={18} className="inline mr-2 text-[#c9a96e]" />
-              目标星辰不存在
-            </h3>
-            <p className="text-sm text-[#f5f0e8]/50 mb-4">
-              星图连线需要指向「<span className="text-[#c9a96e]">{pendingConnect.nodeName}</span>」，但该星辰尚未创建。是否创建此星辰并完成连线？
-            </p>
-            <div className="space-y-3 mb-4">
-              <div>
-                <label className="text-xs text-[#f5f0e8]/50 mb-1 block">星辰名称</label>
-                <input
-                  value={creatingNodeName}
-                  onChange={e => setCreatingNodeName(e.target.value)}
-                  className="w-full bg-[#0f0f1a] border border-[#c9a96e]/20 rounded-lg px-3 py-2 text-sm text-[#f5f0e8] placeholder:text-[#f5f0e8]/30 focus:outline-none focus:border-[#c9a96e]/60"
-                  placeholder="输入星辰名称..."
-                />
-              </div>
-              <div>
-                <label className="text-xs text-[#f5f0e8]/50 mb-1 block">描述（可选）</label>
-                <textarea
-                  value={creatingNodeDesc}
-                  onChange={e => setCreatingNodeDesc(e.target.value)}
-                  rows={2}
-                  className="w-full bg-[#0f0f1a] border border-[#c9a96e]/20 rounded-lg px-3 py-2 text-sm text-[#f5f0e8] placeholder:text-[#f5f0e8]/30 focus:outline-none focus:border-[#c9a96e]/60 resize-none"
-                  placeholder="简要描述..."
-                />
-              </div>
-            </div>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => { setPendingConnect(null); setCreatingNodeName(''); setCreatingNodeDesc(''); }}
-                className="px-4 py-2 rounded-lg text-sm text-[#f5f0e8]/50 hover:text-[#f5f0e8] hover:bg-[#f5f0e8]/5 transition-colors"
-              >
-                取消
-              </button>
-              <button
-                onClick={handleCreateMissingNode}
-                disabled={!creatingNodeName.trim() || creatingNodeLoading}
-                className="px-4 py-2 rounded-lg bg-[#c9a96e]/20 border border-[#c9a96e]/30 text-sm text-[#c9a96e] hover:bg-[#c9a96e]/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                {creatingNodeLoading ? (
-                  <><Loader2 size={14} className="animate-spin" /> 创建中...</>
-                ) : (
-                  <>创建星辰并连线</>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

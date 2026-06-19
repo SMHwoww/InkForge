@@ -9,19 +9,25 @@ router.get('/:projectId', async (req, res) => {
     const projectId = Number(req.params.projectId);
     const db = await getDb();
     const rows = db.exec(
-      `SELECT id, role, content, created_at FROM chat_messages WHERE project_id = ? ORDER BY id ASC`,
+      `SELECT id, role, content, tool_calls, created_at FROM chat_messages WHERE project_id = ? ORDER BY id ASC`,
       [projectId],
     );
     if (!rows.length) {
       res.json({ code: 0, data: [], message: 'ok' });
       return;
     }
-    const messages = rows[0].values.map(row => ({
-      id: row[0],
-      role: row[1],
-      content: row[2],
-      createdAt: row[3],
-    }));
+    const messages = rows[0].values.map(row => {
+      const msg: any = {
+        id: row[0],
+        role: row[1],
+        content: row[2],
+        createdAt: row[4],
+      };
+      if (row[3]) {
+        try { msg.tool_calls = JSON.parse(String(row[3])); } catch { /* ignore */ }
+      }
+      return msg;
+    });
     res.json({ code: 0, data: messages, message: 'ok' });
   } catch (e) {
     res.status(500).json({ code: 500, message: '获取聊天记录失败' });
@@ -40,11 +46,12 @@ router.post('/:projectId', async (req, res) => {
     const db = await getDb();
     db.run('DELETE FROM chat_messages WHERE project_id = ?', [projectId]);
     const stmt = db.prepare(
-      'INSERT INTO chat_messages (project_id, role, content) VALUES (?, ?, ?)',
+      'INSERT INTO chat_messages (project_id, role, content, tool_calls) VALUES (?, ?, ?, ?)',
     );
     for (const msg of messages) {
-      if (msg.role && msg.content) {
-        stmt.run([projectId, msg.role, msg.content]);
+      if (msg.role && (msg.content || msg.tool_calls)) {
+        const toolCallsJson = msg.tool_calls ? JSON.stringify(msg.tool_calls) : null;
+        stmt.run([projectId, msg.role, msg.content || '', toolCallsJson]);
       }
     }
     stmt.free();

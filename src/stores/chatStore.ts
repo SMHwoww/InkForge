@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ChatMessage } from '@/types';
+import type { ChatMessage, ToolCallRecord } from '@/types';
 import { api } from '@/api/client';
 
 interface ChatState {
@@ -11,6 +11,7 @@ interface ChatState {
   setStreaming: (val: boolean) => void;
   clearMessages: () => void;
   updateLastAssistant: (content: string) => void;
+  setLastAssistantToolCalls: (calls: ToolCallRecord[]) => void;
   removeMessage: (index: number) => void;
   loadMessages: (projectId: number) => Promise<void>;
   _saveMessages: () => void;
@@ -69,6 +70,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
+  setLastAssistantToolCalls: (calls) => {
+    const { messages, projectId } = get();
+    const msgs = [...messages];
+    if (msgs.length > 0 && msgs[msgs.length - 1].role === 'assistant') {
+      msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], tool_calls: calls };
+    }
+    set({ messages: msgs });
+    if (projectId) {
+      debouncedSave(projectId, msgs);
+    }
+  },
+
   removeMessage: (index) => {
     const { messages, projectId } = get();
     const newMessages = messages.filter((_, i) => i !== index);
@@ -83,7 +96,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const data = await api.getChatMessages(projectId);
       const messages: ChatMessage[] = data.map((m: any) => ({
         role: m.role,
-        content: m.content,
+        content: m.content || '',
+        tool_calls: m.tool_calls || undefined,
       }));
       set({ messages });
     } catch {

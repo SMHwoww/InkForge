@@ -12,13 +12,14 @@ router.post('/chat', async (req, res) => {
     return;
   }
 
-  const systemMessage = {
-    role: 'system',
-    content: '你是一位专业的小说创作助手，擅长帮助作者进行角色设计、世界观构建、情节构思和文字润色。当用户需要实时信息、网络搜索或外部数据时，可以调用提供的工具来获取。请用中文回答，语气友好专业。' +
-      (context ? `\n\n当前创作上下文：${JSON.stringify(context)}` : ''),
-  };
+  // 剥离前端的自定义 tool_calls 字段（UI 展示用，非 OpenAI 格式，会导致 400 错误）
+  const cleanMessages = messages.map((m: any) => {
+    const { tool_calls, ...rest } = m;
+    return rest;
+  });
 
-  await aiService.streamChat([systemMessage, ...messages], res);
+  // 前端已经在消息中包含了 system prompt，直接传递
+  await aiService.streamChat(cleanMessages, res);
 });
 
 // AI 生成世界观

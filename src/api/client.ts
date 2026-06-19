@@ -143,7 +143,7 @@ export const api = {
   // Chat History
   getChatMessages: (projectId: number) =>
     request<any[]>(`/chat/${projectId}`),
-  saveChatMessages: (projectId: number, messages: { role: string; content: string }[]) =>
+  saveChatMessages: (projectId: number, messages: { role: string; content: string; tool_calls?: any[] }[]) =>
     request<any>(`/chat/${projectId}`, { method: 'POST', body: JSON.stringify({ messages }) }),
   deleteChatMessages: (projectId: number) =>
     request<any>(`/chat/${projectId}`, { method: 'DELETE' }),

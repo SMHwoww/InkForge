@@ -11,6 +11,8 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { McpServerConfig } from './mcpConfig.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
+import { getBuiltinToolDefs, executeBuiltinTool, BUILTIN_SERVER_NAME } from './builtinTools.js';
+import { getBuiltinEnabled } from './mcpConfig.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -102,14 +104,15 @@ export async function initializeMcp(configs: McpServerConfig[]): Promise<void> {
   if (_initialized) return;
   _initialized = true;
 
-  if (!configs.length) {
-    console.log('[MCP] No MCP servers configured, skipping initialization');
+  const active = configs.filter(c => !c.disabled);
+  if (!active.length) {
+    console.log('[MCP] No active MCP servers, skipping initialization');
     return;
   }
 
   _connections = [];
 
-  for (const cfg of configs) {
+  for (const cfg of active) {
     try {
       const conn = await connectServer(cfg);
       _connections.push(conn);
@@ -119,12 +122,21 @@ export async function initializeMcp(configs: McpServerConfig[]): Promise<void> {
     }
   }
 
-  console.log(`[MCP] Initialized ${_connections.length}/${configs.length} servers, ${getAllTools().length} total tools`);
+  const skipped = configs.length - active.length;
+  console.log(`[MCP] Initialized ${_connections.length}/${active.length} servers, ${getAllTools().length} total tools${skipped > 0 ? ` (${skipped} disabled)` : ''}`);
 }
 
 export function getAllTools(): McpToolDefinition[] {
-  if (!_connections) return [];
-  return _connections.flatMap(c => c.tools);
+  const external = _connections ? _connections.flatMap(c => c.tools) : [];
+  if (!getBuiltinEnabled()) return external;
+  const builtin = getBuiltinToolDefs().map(t => ({
+    qualifiedName: t.name,
+    serverName: BUILTIN_SERVER_NAME,
+    name: t.name,
+    description: t.description,
+    inputSchema: t.parameters,
+  }));
+  return [...builtin, ...external];
 }
 
 export function toolsToOpenAI(): OpenAIToolDefinition[] {
@@ -155,6 +167,15 @@ export async function executeToolCall(
   qualifiedName: string,
   args: Record<string, any>,
 ): Promise<string> {
+  // 先检查内置工具
+  const builtinNames = getBuiltinToolDefs().map(t => t.name);
+  if (builtinNames.includes(qualifiedName)) {
+    if (!getBuiltinEnabled()) {
+      return `Error: 内置 MCP 服务已禁用，工具 "${qualifiedName}" 不可用。请在设置中重新启用。`;
+    }
+    return executeBuiltinTool(qualifiedName, args);
+  }
+
   const found = findTool(qualifiedName);
   if (!found) {
     return `Error: Tool "${qualifiedName}" not found. Available tools: ${getAllTools().map(t => t.qualifiedName).join(', ') || 'none'}`;
@@ -190,19 +211,28 @@ export async function shutdownMcp(): Promise<void> {
   console.log('[MCP] All connections closed');
 }
 
-export async function reloadMcp(configs: McpServerConfig[]): Promise<Array<{ name: string; success: boolean; toolCount: number; error?: string }>> {
+export async function reloadMcp(configs: McpServerConfig[]): Promise<Array<{ name: string; success: boolean; toolCount: number; error?: string; disabled?: boolean }>> {
   await shutdownMcp();
   _initialized = false;
 
-  if (!configs.length) {
-    console.log('[MCP] No configs to reload, skipping');
-    return [];
+  const active = configs.filter(c => !c.disabled);
+  const disabled = configs.filter(c => c.disabled);
+
+  const results: Array<{ name: string; success: boolean; toolCount: number; error?: string; disabled?: boolean }> = [];
+
+  // Report disabled servers
+  for (const cfg of disabled) {
+    results.push({ name: cfg.name, success: false, toolCount: 0, disabled: true });
+  }
+
+  if (!active.length) {
+    console.log('[MCP] No active servers to reload');
+    return results;
   }
 
   _connections = [];
-  const results: Array<{ name: string; success: boolean; toolCount: number; error?: string }> = [];
 
-  for (const cfg of configs) {
+  for (const cfg of active) {
     try {
       const conn = await connectServer(cfg);
       _connections.push(conn);
@@ -215,7 +245,7 @@ export async function reloadMcp(configs: McpServerConfig[]): Promise<Array<{ nam
   }
 
   _initialized = true;
-  console.log(`[MCP] Reload done: ${results.filter(r => r.success).length}/${configs.length} servers`);
+  console.log(`[MCP] Reload done: ${results.filter(r => r.success).length}/${active.length} active servers, ${disabled.length} disabled`);
   return results;
 }
 

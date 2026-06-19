@@ -9,6 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { z } from 'zod';
+import { BUILTIN_SERVER_NAME } from './builtinTools.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,6 +23,8 @@ export const McpServerConfigSchema = z.discriminatedUnion('type', [
     type: z.literal('remote'),
     url: z.string(),
     headers: z.record(z.string()).optional().default({}),
+    builtin: z.boolean().optional(),
+    disabled: z.boolean().optional().default(false),
   }),
   z.object({
     name: z.string(),
@@ -29,6 +32,8 @@ export const McpServerConfigSchema = z.discriminatedUnion('type', [
     command: z.string(),
     args: z.array(z.string()).optional().default([]),
     env: z.record(z.string()).optional().default({}),
+    builtin: z.boolean().optional(),
+    disabled: z.boolean().optional().default(false),
   }),
 ]);
 
@@ -49,6 +54,7 @@ export const AppConfigSchema = z.object({
   }),
   mcp: z.object({
     enabled: z.boolean().default(true),
+    builtinEnabled: z.boolean().default(true),
     servers: z.array(McpServerConfigSchema).default([]),
   }),
   modules: z.object({
@@ -76,6 +82,7 @@ const DEFAULT_CONFIG: AppConfig = {
   },
   mcp: {
     enabled: true,
+    builtinEnabled: true,
     servers: [],
   },
   modules: {
@@ -183,6 +190,10 @@ export function getMcpEnabled(): boolean {
   return loadConfig().mcp.enabled;
 }
 
+export function getBuiltinEnabled(): boolean {
+  return loadConfig().mcp.builtinEnabled;
+}
+
 export function loadMcpServerConfigs(): McpServerConfig[] {
   return loadConfig().mcp.servers;
 }
@@ -193,4 +204,16 @@ export function getAiConfig() {
 
 export function getImageConfig() {
   return loadConfig().image;
+}
+
+/** 获取内置 MCP 服务配置（始终启用，不可删除） */
+export function getBuiltinServerConfig(): McpServerConfig {
+  return {
+    name: BUILTIN_SERVER_NAME,
+    type: 'local',
+    command: 'builtin',
+    args: [],
+    env: {},
+    builtin: true,
+  };
 }

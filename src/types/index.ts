@@ -47,9 +47,18 @@ export interface WorldbuildingItem {
 
 export const WorldbuildingCategories = ['地理', '历史', '势力', '魔法体系', '种族', '文化', '其他'] as const;
 
+export interface ToolCallRecord {
+  id: string;
+  name: string;
+  args: string;
+  result?: string;
+  status: 'running' | 'done' | 'error';
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
+  tool_calls?: ToolCallRecord[];
 }
 
 export interface Chapter {

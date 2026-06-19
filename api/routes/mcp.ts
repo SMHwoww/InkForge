@@ -8,8 +8,9 @@
  */
 
 import { Router, type Request, type Response } from 'express';
-import { loadConfig, saveConfig, McpServerConfigSchema, type McpServerConfig } from '../services/mcpConfig.js';
+import { loadConfig, saveConfig, getBuiltinServerConfig, McpServerConfigSchema, type McpServerConfig } from '../services/mcpConfig.js';
 import { reloadMcp, getAllTools, testMcpServer } from '../services/mcpClient.js';
+import { BUILTIN_SERVER_NAME } from '../services/builtinTools.js';
 
 const router = Router();
 
@@ -20,11 +21,17 @@ router.get('/config', (_req: Request, res: Response) => {
     const config = loadConfig();
     const tools = getAllTools();
 
+    // 内置 MCP 服务始终排在第一位
+    const builtinConfig = getBuiltinServerConfig();
+    const allServers = [builtinConfig, ...config.mcp.servers.filter(s => s.name !== BUILTIN_SERVER_NAME)];
+
     res.json({
       code: 0,
       data: {
         enabled: config.mcp.enabled,
-        servers: config.mcp.servers,
+        builtinEnabled: config.mcp.builtinEnabled,
+        servers: allServers,
+        builtinServerName: BUILTIN_SERVER_NAME,
         tools: tools.map(t => ({
           qualifiedName: t.qualifiedName,
           serverName: t.serverName,
@@ -43,11 +50,15 @@ router.get('/config', (_req: Request, res: Response) => {
 
 router.put('/config', async (req: Request, res: Response) => {
   try {
-    const { enabled, servers } = req.body;
+    const { enabled, builtinEnabled, servers } = req.body;
 
     const validatedServers: McpServerConfig[] = [];
     if (Array.isArray(servers)) {
       for (const item of servers) {
+        // 禁止删除或修改内置 MCP 服务
+        if (item.builtin) {
+          continue;
+        }
         const result = McpServerConfigSchema.safeParse(item);
         if (result.success) {
           validatedServers.push(result.data);
@@ -60,9 +71,11 @@ router.put('/config', async (req: Request, res: Response) => {
     }
 
     // Save to config.json
+    const current = loadConfig();
     const updated = saveConfig({
       mcp: {
-        enabled: enabled !== undefined ? enabled : loadConfig().mcp.enabled,
+        enabled: enabled !== undefined ? enabled : current.mcp.enabled,
+        builtinEnabled: builtinEnabled !== undefined ? builtinEnabled : current.mcp.builtinEnabled,
         servers: validatedServers,
       },
     });
@@ -74,7 +87,9 @@ router.put('/config', async (req: Request, res: Response) => {
       code: 0,
       data: {
         enabled: updated.mcp.enabled,
-        servers: updated.mcp.servers,
+        builtinEnabled: updated.mcp.builtinEnabled,
+        servers: [getBuiltinServerConfig(), ...updated.mcp.servers],
+        builtinServerName: BUILTIN_SERVER_NAME,
         reloadResults: results,
       },
       message: '配置已保存并重载',
@@ -97,6 +112,7 @@ router.post('/reload', async (_req: Request, res: Response) => {
       code: 0,
       data: {
         results,
+        builtinServerName: BUILTIN_SERVER_NAME,
         tools: getAllTools().map(t => ({
           qualifiedName: t.qualifiedName,
           serverName: t.serverName,

@@ -197,6 +197,7 @@ export async function initDatabase() {
       project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
       role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
       content TEXT NOT NULL,
+      tool_calls TEXT,
       created_at TEXT DEFAULT (datetime('now', 'localtime'))
     );
 
@@ -207,6 +208,9 @@ export async function initDatabase() {
   try { database.run('ALTER TABLE timeline_events ADD COLUMN placed INTEGER DEFAULT 0'); } catch (_) {}
   try { database.run('ALTER TABLE timeline_events ADD COLUMN pos_x INTEGER'); } catch (_) {}
   try { database.run('ALTER TABLE timeline_events ADD COLUMN pos_y INTEGER'); } catch (_) {}
+
+  // Migration: add tool_calls column to chat_messages
+  try { database.run('ALTER TABLE chat_messages ADD COLUMN tool_calls TEXT'); } catch (_) {}
 
   saveDb();
 }
