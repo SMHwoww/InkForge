@@ -40,10 +40,12 @@ export async function createNode(projectId: number, data: {
     [projectId, data.entityType, data.entityId || null, data.name,
      data.x || 0, data.y || 0, data.color || '#c9a96e', data.description || '', now, now],
   );
-  saveDb();
-  const rows = db.exec(`SELECT id, entity_type, entity_id, name, x, y, color, description, created_at, updated_at FROM star_map_nodes WHERE id = last_insert_rowid()`);
+  const idResult = db.exec('SELECT last_insert_rowid()');
+  const id = idResult[0].values[0][0] as number;
+  const rows = db.exec(`SELECT id, entity_type, entity_id, name, x, y, color, description, created_at, updated_at FROM star_map_nodes WHERE id = ?`, [id]);
   if (!rows.length || !rows[0].values.length) return null;
   const r = rows[0].values[0];
+  saveDb();
   return {
     id: r[0], entityType: r[1], entityId: r[2], name: r[3],
     x: r[4], y: r[5], color: r[6], description: r[7],
@@ -99,10 +101,12 @@ export async function createEdge(projectId: number, data: {
     [projectId, data.sourceNodeId, data.targetNodeId,
      data.relationType || 'other', data.label || '', data.description || '', now, now],
   );
-  saveDb();
-  const rows = db.exec(`SELECT id, source_node_id, target_node_id, relation_type, label, description, created_at, updated_at FROM star_map_edges WHERE id = last_insert_rowid()`);
+  const idResult2 = db.exec('SELECT last_insert_rowid()');
+  const edgeId = idResult2[0].values[0][0] as number;
+  const rows = db.exec(`SELECT id, source_node_id, target_node_id, relation_type, label, description, created_at, updated_at FROM star_map_edges WHERE id = ?`, [edgeId]);
   if (!rows.length || !rows[0].values.length) return null;
   const r = rows[0].values[0];
+  saveDb();
   return {
     id: r[0], sourceNodeId: r[1], targetNodeId: r[2],
     relationType: r[3], label: r[4], description: r[5],

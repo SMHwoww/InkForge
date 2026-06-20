@@ -32,7 +32,8 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   if (json.code !== 0) {
     throw new Error(json.message || '请求失败');
   }
-  return json.data;
+  // 确保 data 不为 undefined，null 保留（用于 delete 等端点）
+  return json.data ?? null as T;
 }
 
 export const api = {
@@ -200,4 +201,20 @@ export const api = {
     request<any>(`/projects/${projectId}/media/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteMediaAsset: (projectId: number, id: number) =>
     request<any>(`/projects/${projectId}/media/${id}`, { method: 'DELETE' }),
+
+  // 上传文件到设定集
+  uploadMediaAsset: async (projectId: number, file: File, name?: string, prompt?: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (name) formData.append('name', name);
+    if (prompt) formData.append('prompt', prompt);
+    formData.append('source', 'upload');
+    const res = await fetch(`/api/projects/${projectId}/media/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+    const json = await res.json();
+    if (json.code !== 0) throw new Error(json.message || '上传失败');
+    return json.data;
+  },
 };

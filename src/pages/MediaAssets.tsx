@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import {
   Plus, Trash2, Image as ImageIcon, Video, Music, Search,
-  Grid3X3, ExternalLink, Copy, X, Eye, Loader2,
+  Grid3X3, ExternalLink, Copy, X, Eye, Loader2, Upload, Link,
 } from 'lucide-react';
 import { useToastStore } from '@/stores/toastStore';
 import { clsx } from 'clsx';
@@ -36,6 +36,8 @@ export default function MediaAssets() {
   const [showAdd, setShowAdd] = useState(false);
   const [previewId, setPreviewId] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
+  const [addMode, setAddMode] = useState<'url' | 'file'>('url');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   // Add form
   const [addForm, setAddForm] = useState({
@@ -53,7 +55,7 @@ export default function MediaAssets() {
     try {
       setLoading(true);
       const data = await api.getMediaAssets(projectId);
-      setAssets(data);
+      setAssets(Array.isArray(data) ? data : []);
     } catch (e: any) {
       addToast(e.message || '加载失败', 'error');
     } finally {
@@ -62,21 +64,36 @@ export default function MediaAssets() {
   };
 
   const handleAdd = async () => {
-    if (!addForm.name.trim() || !addForm.url.trim()) {
-      addToast('名称和URL不能为空', 'error');
+    if (!addForm.name.trim()) {
+      addToast('名称不能为空', 'error');
       return;
     }
+    if (addMode === 'url' && !addForm.url.trim()) {
+      addToast('URL不能为空', 'error');
+      return;
+    }
+    if (addMode === 'file' && !selectedFile) {
+      addToast('请选择文件', 'error');
+      return;
+    }
+
     setAdding(true);
     try {
-      await api.createMediaAsset(projectId, {
-        name: addForm.name.trim(),
-        type: addForm.type,
-        url: addForm.url.trim(),
-        prompt: addForm.prompt.trim(),
-        source: 'upload',
-      });
+      if (addMode === 'file' && selectedFile) {
+        await api.uploadMediaAsset(projectId, selectedFile, addForm.name.trim(), addForm.prompt.trim());
+      } else {
+        await api.createMediaAsset(projectId, {
+          name: addForm.name.trim(),
+          type: addForm.type,
+          url: addForm.url.trim(),
+          prompt: addForm.prompt.trim(),
+          source: 'upload',
+        });
+      }
       setShowAdd(false);
       setAddForm({ name: '', type: 'image', url: '', prompt: '' });
+      setSelectedFile(null);
+      setAddMode('url');
       addToast('已添加到设定集');
       loadAssets();
     } catch (e: any) {
@@ -243,8 +260,39 @@ export default function MediaAssets() {
       )}
 
       {/* Add Modal */}
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="添加媒体文件">
+      <Modal open={showAdd} onClose={() => { setShowAdd(false); setSelectedFile(null); setAddMode('url'); }} title="添加媒体文件">
         <div className="space-y-4">
+          {/* 添加方式切换 */}
+          <div>
+            <label className="block text-sm text-[#f5f0e8]/70 mb-2">添加方式</label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setAddMode('url')}
+                className={clsx(
+                  'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm transition-colors',
+                  addMode === 'url'
+                    ? 'bg-[#c9a96e]/20 text-[#c9a96e] border border-[#c9a96e]/30'
+                    : 'bg-[#0f0f1a] border border-[#c9a96e]/10 text-[#f5f0e8]/50 hover:text-[#f5f0e8]',
+                )}
+              >
+                <Link size={14} />
+                URL链接
+              </button>
+              <button
+                onClick={() => setAddMode('file')}
+                className={clsx(
+                  'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm transition-colors',
+                  addMode === 'file'
+                    ? 'bg-[#c9a96e]/20 text-[#c9a96e] border border-[#c9a96e]/30'
+                    : 'bg-[#0f0f1a] border border-[#c9a96e]/10 text-[#f5f0e8]/50 hover:text-[#f5f0e8]',
+                )}
+              >
+                <Upload size={14} />
+                上传文件
+              </button>
+            </div>
+          </div>
+
           <Input
             label="名称"
             value={addForm.name}
@@ -274,12 +322,47 @@ export default function MediaAssets() {
               ))}
             </div>
           </div>
-          <Input
-            label="URL"
-            value={addForm.url}
-            onChange={e => setAddForm({ ...addForm, url: e.target.value })}
-            placeholder="https://..."
-          />
+
+          {addMode === 'url' ? (
+            <Input
+              label="URL"
+              value={addForm.url}
+              onChange={e => setAddForm({ ...addForm, url: e.target.value })}
+              placeholder="https://..."
+            />
+          ) : (
+            <div>
+              <label className="block text-sm text-[#f5f0e8]/70 mb-2">文件</label>
+              <label className="flex flex-col items-center justify-center gap-2 w-full h-32 border-2 border-dashed border-[#c9a96e]/20 rounded-xl cursor-pointer hover:border-[#c9a96e]/50 transition-colors bg-[#0f0f1a]">
+                {selectedFile ? (
+                  <div className="text-center">
+                    <p className="text-sm text-[#c9a96e] truncate max-w-[200px]">{selectedFile.name}</p>
+                    <p className="text-xs text-[#f5f0e8]/30 mt-1">
+                      {(selectedFile.size / 1024 / 1024).toFixed(1)} MB
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <Upload size={24} className="text-[#f5f0e8]/30" />
+                    <p className="text-sm text-[#f5f0e8]/40">点击选择文件</p>
+                  </>
+                )}
+                <input
+                  type="file"
+                  accept="image/*,video/*,audio/*"
+                  className="hidden"
+                  onChange={e => {
+                    const file = e.target.files?.[0] || null;
+                    setSelectedFile(file);
+                    if (file && !addForm.name) {
+                      setAddForm(prev => ({ ...prev, name: file.name.replace(/\.[^.]+$/, '') }));
+                    }
+                  }}
+                />
+              </label>
+            </div>
+          )}
+
           <div>
             <label className="block text-sm text-[#f5f0e8]/70 mb-2">提示词（可选）</label>
             <textarea
@@ -291,7 +374,7 @@ export default function MediaAssets() {
             />
           </div>
           <div className="flex justify-end gap-3 pt-2">
-            <Button variant="secondary" onClick={() => setShowAdd(false)}>取消</Button>
+            <Button variant="secondary" onClick={() => { setShowAdd(false); setSelectedFile(null); setAddMode('url'); }}>取消</Button>
             <Button onClick={handleAdd} disabled={adding}>
               {adding ? '添加中...' : '添加'}
             </Button>

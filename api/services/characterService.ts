@@ -34,10 +34,12 @@ export async function createCharacter(projectId: number, data: {
     `INSERT INTO characters (project_id, name, role, gender, age, appearance, personality, background, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [projectId, data.name, data.role || '', data.gender || '', data.age || null, data.appearance || '', data.personality || '', data.background || '', now, now],
   );
-  saveDb();
-  const rows = db.exec(`SELECT * FROM characters WHERE id = last_insert_rowid()`);
+  const idResult = db.exec('SELECT last_insert_rowid()');
+  const id = idResult[0].values[0][0] as number;
+  const rows = db.exec(`SELECT * FROM characters WHERE id = ?`, [id]);
   if (!rows.length || !rows[0].values.length) return null;
   const row = rows[0].values[0];
+  saveDb();
   return {
     id: row[0], projectId: row[1], name: row[2], role: row[3],
     gender: row[4], age: row[5], appearance: row[6], personality: row[7],

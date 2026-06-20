@@ -134,12 +134,20 @@ export async function streamChat(
       }
 
       const toolCallEntries = Array.from(toolCalls.values());
-      writeSSE(res, { tool_calls: toolCallEntries.map(tc => ({ id: tc.id, name: tc.name, arguments: tc.args })), done: false });
+
+      // 确保 arguments 是合法 JSON，防止 qwen 等模型报错
+      const normalizedEntries = toolCallEntries.map(tc => {
+        let args = tc.args;
+        try { JSON.parse(args); } catch { args = '{}'; }
+        return { ...tc, args };
+      });
+
+      writeSSE(res, { tool_calls: normalizedEntries.map(tc => ({ id: tc.id, name: tc.name, arguments: tc.args })), done: false });
 
       const assistantMsg: OpenAI.Chat.Completions.ChatCompletionAssistantMessageParam = {
         role: 'assistant',
         content: contentBuffer || null,
-        tool_calls: toolCallEntries.map(tc => ({
+        tool_calls: normalizedEntries.map(tc => ({
           id: tc.id,
           type: 'function' as const,
           function: { name: tc.name, arguments: tc.args },
@@ -147,7 +155,7 @@ export async function streamChat(
       };
       history.push(assistantMsg);
 
-      for (const tc of toolCallEntries) {
+      for (const tc of normalizedEntries) {
         let args: Record<string, any> = {};
         try { args = JSON.parse(tc.args); } catch { /* ignore */ }
 

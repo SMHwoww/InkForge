@@ -33,6 +33,10 @@ router.post('/', async (req, res) => {
       return;
     }
     const project = await projectService.createProject({ title, summary, genre });
+    if (!project) {
+      res.status(500).json({ code: 500, message: '创建项目失败：数据库写入异常' });
+      return;
+    }
     res.json({ code: 0, data: project, message: '创建成功' });
   } catch (e) {
     res.status(500).json({ code: 500, message: '创建项目失败' });

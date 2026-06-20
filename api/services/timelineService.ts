@@ -47,9 +47,9 @@ export async function createTimelineEvent(projectId: number, data: {
     `INSERT INTO timeline_events (project_id, title, content, event_date, sort_order, category, placed, pos_x, pos_y, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [projectId, data.title, data.content || '', data.eventDate || '', data.sortOrder ?? 0, data.category || '', data.placed ?? 0, data.posX ?? null, data.posY ?? null, now, now],
   );
-  saveDb();
   const id = db.exec('SELECT last_insert_rowid()')[0].values[0][0] as number;
   const results = db.exec(`SELECT * FROM timeline_events WHERE id = ?`, [id]);
+  saveDb();
   return mapResult(results[0])[0];
 }
 
@@ -126,9 +126,9 @@ export async function createPerspective(projectId: number, data: { name: string;
     `INSERT INTO timeline_perspectives (project_id, name, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
     [projectId, data.name, data.sortOrder ?? 0, now, now],
   );
-  saveDb();
   const id = db.exec('SELECT last_insert_rowid()')[0].values[0][0] as number;
   const results = db.exec(`SELECT * FROM timeline_perspectives WHERE id = ?`, [id]);
+  saveDb();
   return mapPerspResult(results[0])[0];
 }
 
