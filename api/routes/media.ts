@@ -15,9 +15,22 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { getDb, saveDb } from '../db/index.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const MEDIA_ROOT = path.join(__dirname, '..', '..', 'media');
+// INKFORGE_BUNDLED is injected by esbuild define at build time.
+// When bundled to CJS, __dirname is out of scope (esbuild wraps each file
+// in __commonJS) and import.meta is empty in cjs format.  Derive directories
+// from process.execPath or INKFORGE_DATA_DIR instead.
+declare const INKFORGE_BUNDLED: boolean | undefined;
+
+const MEDIA_ROOT = (() => {
+  if (process.env.INKFORGE_DATA_DIR) {
+    return path.join(process.env.INKFORGE_DATA_DIR, 'media');
+  }
+  if (typeof INKFORGE_BUNDLED !== 'undefined') {
+    return path.join(path.dirname(process.execPath), 'media');
+  }
+  // ESM dev fallback
+  return path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'media');
+})();
 
 const router = Router({ mergeParams: true });
 

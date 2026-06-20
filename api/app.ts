@@ -27,12 +27,19 @@ import imageRoutes from './routes/image.js'
 import chatRoutes from './routes/chat.js'
 import mediaRoutes from './routes/media.js'
 
-// __dirname is a CJS global in esbuild builds; undefined in ESM dev
+// INKFORGE_BUNDLED is injected by esbuild define at build time.
+// In the bundled CJS output, neither __dirname nor import.meta.url work:
+//   - esbuild wraps each file in __commonJS where __dirname is out of scope
+//   - "import.meta" is not available with the "cjs" output format
+// So when bundled, derive directories from process.execPath instead.
+declare const INKFORGE_BUNDLED: boolean | undefined;
 declare var __dirname: string | undefined;
 
-const currentDirname = typeof __dirname !== 'undefined'
-  ? __dirname
-  : path.dirname(fileURLToPath(import.meta.url));
+const currentDirname = typeof INKFORGE_BUNDLED !== 'undefined'
+  ? path.dirname(process.execPath)
+  : typeof __dirname !== 'undefined'
+    ? __dirname
+    : path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * 初始化应用 —— 必须在 INKFORGE_DATA_DIR 设置后调用

@@ -2,16 +2,18 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// __dirname is a CJS global in esbuild builds; undefined in ESM dev
-declare var __dirname: string | undefined;
-
 // INKFORGE_BUNDLED is injected by esbuild define at build time.
 // In production (SEA executable), place data alongside the executable.
 declare const INKFORGE_BUNDLED: boolean | undefined;
 
-const currentDirname = typeof __dirname !== 'undefined'
-  ? __dirname
-  : path.dirname(fileURLToPath(import.meta.url));
+// __dirname is a CJS global in esbuild builds; undefined in ESM dev
+declare var __dirname: string | undefined;
+
+const currentDirname = typeof INKFORGE_BUNDLED !== 'undefined'
+  ? path.dirname(process.execPath)
+  : typeof __dirname !== 'undefined'
+    ? __dirname
+    : path.dirname(fileURLToPath(import.meta.url));
 
 const logsDir = typeof INKFORGE_BUNDLED !== 'undefined'
   ? path.join(path.dirname(process.execPath), 'logs')

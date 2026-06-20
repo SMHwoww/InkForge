@@ -3,7 +3,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 
-// In bundled builds, __dirname is a CJS global.
+// In bundled builds, __dirname is a CJS global at the entry point but NOT inside
+// esbuild's __commonJS wrappers, so it's undefined there.
 // In ESM dev (tsx), it's undefined and we derive it from import.meta.url.
 declare var __dirname: string | undefined;
 
@@ -12,9 +13,11 @@ declare var __dirname: string | undefined;
 // In development, use data/ relative to the project root.
 declare const INKFORGE_BUNDLED: boolean | undefined;
 
-const currentDirname = typeof __dirname !== 'undefined'
-  ? __dirname
-  : path.dirname(fileURLToPath(import.meta.url));
+const currentDirname = typeof INKFORGE_BUNDLED !== 'undefined'
+  ? path.dirname(process.execPath)
+  : typeof __dirname !== 'undefined'
+    ? __dirname
+    : path.dirname(fileURLToPath(import.meta.url));
 
 /** 惰性获取 data 目录路径 —— 运行时计算，确保 INKFORGE_DATA_DIR 已生效 */
 function getDataDir(): string {
