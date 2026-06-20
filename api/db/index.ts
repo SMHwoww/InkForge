@@ -16,19 +16,19 @@ const currentDirname = typeof __dirname !== 'undefined'
   ? __dirname
   : path.dirname(fileURLToPath(import.meta.url));
 
-const dataDir = (() => {
-  // Sidecar 模式：通过 --data-dir 参数或 INKFORGE_DATA_DIR 环境变量指定数据目录
+/** 惰性获取 data 目录路径 —— 运行时计算，确保 INKFORGE_DATA_DIR 已生效 */
+function getDataDir(): string {
   if (process.env.INKFORGE_DATA_DIR) {
     return path.join(process.env.INKFORGE_DATA_DIR, 'data');
   }
-  // 打包模式：data/ 与可执行文件在同一目录
   if (typeof INKFORGE_BUNDLED !== 'undefined') {
     return path.join(path.dirname(process.execPath), 'data');
   }
-  // 开发模式：项目根目录下的 data/
   return path.join(currentDirname, '..', '..', 'data');
-})();
-const dbPath = path.join(dataDir, 'ward.db');
+}
+function getDbPath(): string {
+  return path.join(getDataDir(), 'ward.db');
+}
 
 let db: Database | null = null;
 
@@ -46,8 +46,8 @@ function getWasmBinary(): Uint8Array | undefined {
 export async function getDb(): Promise<Database> {
   if (db) return db;
 
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
+  if (!fs.existsSync(getDataDir())) {
+    fs.mkdirSync(getDataDir(), { recursive: true });
   }
 
   const wasmBinary = getWasmBinary();
@@ -55,8 +55,8 @@ export async function getDb(): Promise<Database> {
     ? await initSqlJs({ wasmBinary })
     : await initSqlJs();
 
-  if (fs.existsSync(dbPath)) {
-    const buffer = fs.readFileSync(dbPath);
+  if (fs.existsSync(getDbPath())) {
+    const buffer = fs.readFileSync(getDbPath());
     db = new SQL.Database(buffer);
   } else {
     db = new SQL.Database();
@@ -70,7 +70,7 @@ export function saveDb() {
   if (db) {
     const data = db.export();
     const buffer = Buffer.from(data);
-    fs.writeFileSync(dbPath, buffer);
+    fs.writeFileSync(getDbPath(), buffer);
   }
 }
 

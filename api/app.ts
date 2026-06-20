@@ -33,22 +33,25 @@ const currentDirname = typeof __dirname !== 'undefined'
   ? __dirname
   : path.dirname(fileURLToPath(import.meta.url));
 
-// Load config from config.json (replaces .env)
-loadConfig()
+/**
+ * 初始化应用 —— 必须在 INKFORGE_DATA_DIR 设置后调用
+ * server.ts 在解析 --data-dir 参数后调用此函数，确保持久化路径正确
+ */
+export async function initializeApp() {
+  loadConfig();
 
-// init database
-initDatabase().catch(err => {
-  console.error('Database init failed:', err);
-  process.exit(1);
-});
+  await initDatabase().catch(err => {
+    console.error('Database init failed:', err);
+    process.exit(1);
+  });
 
-// init MCP
-if (getMcpEnabled()) {
+  if (getMcpEnabled()) {
     const mcpConfigs = loadMcpServerConfigs();
     initializeMcp(mcpConfigs).catch(err => {
       console.error('[MCP] Initialization failed:', err);
     });
   }
+}
 
 const app: express.Application = express()
 

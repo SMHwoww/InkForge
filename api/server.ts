@@ -13,16 +13,16 @@
  * - 设置后，config.json 和 data/ 将从指定目录读写
  */
 
-// ⚠️ 必须在任何 import 之前设置 data dir，因为 import 的模块会在加载时使用该值
+// ⚠️ 必须在 import 之前设置 INKFORGE_DATA_DIR
+// mcpConfig.ts / db/index.ts 在首次调用时才解析路径（惰性求值），
+// 所以此处设置后，后续所有文件读写都会使用正确的 data dir。
 const dataDirArg = process.argv.find((arg) => arg.startsWith('--data-dir='));
 if (dataDirArg) {
   process.env.INKFORGE_DATA_DIR = dataDirArg.split('=')[1];
   console.log(`[Server] 数据目录: ${process.env.INKFORGE_DATA_DIR}`);
 }
 
-// 动态导入 —— 确保 INKFORGE_DATA_DIR 在模块初始化前已设置
-const { default: app } = await import('./app.js');
-
+import app, { initializeApp } from './app.js';
 import net from 'net';
 
 /**
@@ -67,6 +67,9 @@ function parsePortArg(): number | null {
  * 启动服务器
  */
 async function start() {
+  // 初始化配置、数据库、MCP（依赖 INKFORGE_DATA_DIR 已设置）
+  await initializeApp();
+
   const portArg = parsePortArg();
   const envPort = process.env.PORT ? parseInt(process.env.PORT, 10) : null;
   const startPort = portArg || envPort || 3001;

@@ -22,18 +22,16 @@ const currentDirname = typeof __dirname !== 'undefined'
   ? __dirname
   : path.dirname(fileURLToPath(import.meta.url));
 
-const CONFIG_PATH = (() => {
-  // Sidecar 模式：通过 --data-dir 参数或 INKFORGE_DATA_DIR 环境变量指定数据目录
+/** 惰性获取 config.json 路径 —— 运行时计算，确保 INKFORGE_DATA_DIR 已生效 */
+function getConfigPath(): string {
   if (process.env.INKFORGE_DATA_DIR) {
     return path.join(process.env.INKFORGE_DATA_DIR, 'config.json');
   }
-  // 打包模式：config.json 与可执行文件在同一目录
   if (typeof INKFORGE_BUNDLED !== 'undefined') {
     return path.join(path.dirname(process.execPath), 'config.json');
   }
-  // 开发模式：项目根目录
   return path.resolve(currentDirname, '..', '..', 'config.json');
-})();
+}
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -121,8 +119,8 @@ export function loadConfig(): AppConfig {
   if (_config) return _config;
 
   try {
-    if (fs.existsSync(CONFIG_PATH)) {
-      const raw = fs.readFileSync(CONFIG_PATH, 'utf-8');
+    if (fs.existsSync(getConfigPath())) {
+      const raw = fs.readFileSync(getConfigPath(), 'utf-8');
       const parsed = JSON.parse(raw);
 
       // Merge with defaults to handle missing keys
@@ -188,10 +186,10 @@ export function saveConfig(config: Partial<AppConfig>): AppConfig {
   }
   _config = result.data;
   try {
-    const dir = path.dirname(CONFIG_PATH);
+    const dir = path.dirname(getConfigPath());
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(CONFIG_PATH, JSON.stringify(_config, null, 2), 'utf-8');
-    console.log('[Config] Saved to', CONFIG_PATH, '- MCP servers:', _config.mcp.servers.length);
+    fs.writeFileSync(getConfigPath(), JSON.stringify(_config, null, 2), 'utf-8');
+    console.log('[Config] Saved to', getConfigPath(), '- MCP servers:', _config.mcp.servers.length);
   } catch (e) {
     console.error('[Config] Failed to save config:', e);
     throw new Error('无法写入配置文件');
