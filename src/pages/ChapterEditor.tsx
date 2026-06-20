@@ -25,6 +25,7 @@ export default function ChapterEditor() {
   const [selectedChapterId, setSelectedChapterId] = useState<number | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [newTitle, setNewTitle] = useState('');
+  const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [isPreview, setIsPreview] = useState(false);
@@ -105,6 +106,7 @@ export default function ChapterEditor() {
 
   const handleCreateChapter = async () => {
     if (!newTitle.trim()) return;
+    setCreating(true);
     try {
       const chapter = await createChapter(projectId, { title: newTitle.trim(), orderNum: chapters.length });
       setShowCreate(false);
@@ -114,6 +116,7 @@ export default function ChapterEditor() {
     } catch (e: any) {
       addToast(e.message || '创建章节失败', 'error');
     }
+    setCreating(false);
   };
 
   const handleDeleteChapter = async (chapterId: number) => {
@@ -297,7 +300,9 @@ export default function ChapterEditor() {
           />
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="ghost" onClick={() => setShowCreate(false)}>取消</Button>
-            <Button onClick={handleCreateChapter} disabled={!newTitle.trim()}>创建章节</Button>
+            <Button onClick={handleCreateChapter} disabled={!newTitle.trim() || creating}>
+              {creating ? '创建中...' : '创建章节'}
+            </Button>
           </div>
         </div>
       </Modal>

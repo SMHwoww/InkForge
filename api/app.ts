@@ -25,6 +25,7 @@ import mcpRoutes from './routes/mcp.js'
 import configRoutes from './routes/config.js'
 import imageRoutes from './routes/image.js'
 import chatRoutes from './routes/chat.js'
+import mediaRoutes from './routes/media.js'
 
 // __dirname is a CJS global in esbuild builds; undefined in ESM dev
 declare var __dirname: string | undefined;
@@ -59,6 +60,9 @@ app.use(cors())
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
+// 设定集静态文件服务
+const mediaDir = path.join(currentDirname, '..', 'media');
+app.use('/media', express.static(mediaDir));
 /**
  * API Routes
  */
@@ -74,6 +78,7 @@ app.use('/api/mcp', mcpRoutes)
 app.use('/api/image', imageRoutes)
 app.use('/api/config', configRoutes)
 app.use('/api/chat', chatRoutes)
+app.use('/api/projects/:projectId/media', mediaRoutes)
 
 /**
  * health
@@ -90,7 +95,7 @@ app.use(
 
 // Serve static files in production (after API routes so API takes priority)
 if (process.env.NODE_ENV === 'production') {
-  const clientDist = path.join(currentDirname, '..', 'dist');
+const clientDist = path.join(currentDirname, '..', 'dist');
   app.use(express.static(clientDist));
   app.get('*', (req: Request, res: Response, next: NextFunction) => {
     if (!req.path.startsWith('/api')) {

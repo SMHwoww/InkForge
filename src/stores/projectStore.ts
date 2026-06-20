@@ -72,17 +72,18 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   fetchProjects: async () => {
     set({ loading: true });
     const projects = await api.getProjects();
-    set({ projects, loading: false });
+    set({ projects: Array.isArray(projects) ? projects : [], loading: false });
   },
 
   fetchProject: async (id) => {
     set({ loading: true });
     const project = await api.getProject(id);
-    set({ currentProject: project, loading: false });
+    set({ currentProject: project || null, loading: false });
   },
 
   createProject: async (data) => {
     const project = await api.createProject(data);
+    if (!project) throw new Error('创建项目失败：服务器返回空数据');
     set({ projects: [project, ...get().projects] });
     return project;
   },
@@ -105,12 +106,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   fetchCharacters: async (projectId) => {
     const characters = await api.getCharacters(projectId);
-    set({ characters });
+    set({ characters: Array.isArray(characters) ? characters : [] });
   },
 
   fetchCharacter: async (projectId, charId) => {
     const character = await api.getCharacter(projectId, charId);
-    set({ currentCharacter: character });
+    set({ currentCharacter: character || null });
   },
 
   createCharacter: async (projectId, data) => {
@@ -138,7 +139,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   fetchWorldbuilding: async (projectId, category) => {
     const worldbuilding = await api.getWorldbuilding(projectId, category);
-    set({ worldbuilding });
+    set({ worldbuilding: Array.isArray(worldbuilding) ? worldbuilding : [] });
   },
 
   createWorldbuilding: async (projectId, data) => {
@@ -160,7 +161,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   fetchChapters: async (projectId) => {
     const chapters = await api.getChapters(projectId);
-    set({ chapters });
+    set({ chapters: Array.isArray(chapters) ? chapters : [] });
   },
 
   createChapter: async (projectId, data) => {
@@ -182,7 +183,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   fetchOutlines: async (projectId) => {
     const outlines = await api.getOutlines(projectId);
-    set({ outlines });
+    set({ outlines: Array.isArray(outlines) ? outlines : [] });
   },
 
   createOutline: async (projectId, data) => {
@@ -204,7 +205,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   fetchTimeline: async (projectId) => {
     const timelineEvents = await api.getTimeline(projectId);
-    set({ timelineEvents });
+    set({ timelineEvents: Array.isArray(timelineEvents) ? timelineEvents : [] });
   },
 
   createTimelineEvent: async (projectId, data) => {
@@ -226,7 +227,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   fetchPerspectives: async (projectId) => {
     const timelinePerspectives = await api.getPerspectives(projectId);
-    set({ timelinePerspectives });
+    set({ timelinePerspectives: Array.isArray(timelinePerspectives) ? timelinePerspectives : [] });
   },
 
   createPerspective: async (projectId, data) => {

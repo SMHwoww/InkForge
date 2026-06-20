@@ -25,6 +25,7 @@ export default function Timeline() {
   const addToast = useToastStore(s => s.addToast);
 
   const [showCreate, setShowCreate] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<TimelineEvent | null>(null);
   const [form, setForm] = useState({ title: '', content: '', eventDate: '', category: '重大事件' });
   const [dragEventId, setDragEventId] = useState<number | null>(null);
@@ -47,6 +48,7 @@ export default function Timeline() {
   // --- Event CRUD ---
   const handleCreate = async () => {
     if (!form.title.trim()) return;
+    setCreating(true);
     try {
       await createTimelineEvent(projectId, { ...form, sortOrder: timelineEvents.length, placed: 0 });
       setShowCreate(false);
@@ -55,6 +57,7 @@ export default function Timeline() {
     } catch (e: any) {
       addToast(e.message || '创建事件失败', 'error');
     }
+    setCreating(false);
   };
 
   const handleUpdate = async () => {
@@ -344,7 +347,9 @@ export default function Timeline() {
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="ghost" onClick={() => setShowCreate(false)}>取消</Button>
-            <Button onClick={handleCreate} disabled={!form.title.trim()}>创建事件</Button>
+            <Button onClick={handleCreate} disabled={!form.title.trim() || creating}>
+              {creating ? '创建中...' : '创建事件'}
+            </Button>
           </div>
         </div>
       </Modal>

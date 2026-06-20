@@ -30,9 +30,9 @@ export async function createWorldbuildingItem(projectId: number, data: {
     `INSERT INTO worldbuilding_items (project_id, category, title, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
     [projectId, data.category, data.title, data.content || '', now, now],
   );
-  saveDb();
   const id = db.exec('SELECT last_insert_rowid()')[0].values[0][0] as number;
   const rows = db.exec(`SELECT * FROM worldbuilding_items WHERE id = ?`, [id]);
+  saveDb();
   const row = rows[0].values[0];
   return {
     id: row[0], projectId: row[1], category: row[2], title: row[3],

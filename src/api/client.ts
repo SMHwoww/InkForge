@@ -18,15 +18,36 @@ async function initBaseUrl(): Promise<void> {
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   await initBaseUrl();
-  const res = await fetch(`${BASE_URL}${url}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
-  const json: ApiResponse<T> = await res.json();
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${url}`, {
+      headers: { 'Content-Type': 'application/json' },
+      ...options,
+    });
+  } catch {
+    throw new Error('网络连接失败，请检查服务器是否启动');
+  }
+
+  if (!res.ok) {
+    let message = `请求失败 (${res.status})`;
+    try {
+      const errJson = await res.json();
+      if (errJson.message) message = errJson.message;
+    } catch {}
+    throw new Error(message);
+  }
+
+  let json: ApiResponse<T>;
+  try {
+    json = await res.json();
+  } catch {
+    throw new Error('服务器返回数据异常');
+  }
   if (json.code !== 0) {
     throw new Error(json.message || '请求失败');
   }
-  return json.data;
+  // 确保 data 不为 undefined，null 保留（用于 delete 等端点）
+  return json.data ?? null as T;
 }
 
 export const api = {
@@ -182,4 +203,37 @@ export const api = {
     request<any>(`/image/task/${taskId}`),
   createImageVariation: (data: { imageUrl: string; prompt?: string }) =>
     request<any>('/image/variation', { method: 'POST', body: JSON.stringify(data) }),
+
+  // Media Assets (设定集)
+  getMediaAssets: (projectId: number) =>
+    request<any[]>(`/projects/${projectId}/media`),
+  createMediaAsset: (projectId: number, data: {
+    name: string;
+    type?: string;
+    url: string;
+    thumbnailUrl?: string;
+    prompt?: string;
+    source?: string;
+  }) =>
+    request<any>(`/projects/${projectId}/media`, { method: 'POST', body: JSON.stringify(data) }),
+  updateMediaAsset: (projectId: number, id: number, data: { name?: string; prompt?: string }) =>
+    request<any>(`/projects/${projectId}/media/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteMediaAsset: (projectId: number, id: number) =>
+    request<any>(`/projects/${projectId}/media/${id}`, { method: 'DELETE' }),
+
+  // 上传文件到设定集
+  uploadMediaAsset: async (projectId: number, file: File, name?: string, prompt?: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (name) formData.append('name', name);
+    if (prompt) formData.append('prompt', prompt);
+    formData.append('source', 'upload');
+    const res = await fetch(`/api/projects/${projectId}/media/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+    const json = await res.json();
+    if (json.code !== 0) throw new Error(json.message || '上传失败');
+    return json.data;
+  },
 };

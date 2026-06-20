@@ -41,10 +41,13 @@ export async function createProject(data: { title: string; summary?: string; gen
     `INSERT INTO projects (title, summary, genre, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
     [data.title, data.summary || '', data.genre || '', now, now],
   );
-  saveDb();
-  const rows = db.exec(`SELECT *, (SELECT COUNT(*) FROM characters WHERE project_id = last_insert_rowid()) as character_count FROM projects WHERE id = last_insert_rowid()`);
+  // 先获取 ID 再查询，避免 last_insert_rowid() 内联在复杂查询中不可靠
+  const idResult = db.exec('SELECT last_insert_rowid()');
+  const id = idResult[0].values[0][0] as number;
+  const rows = db.exec(`SELECT *, (SELECT COUNT(*) FROM characters WHERE project_id = ?) as character_count FROM projects WHERE id = ?`, [id, id]);
   if (!rows.length || !rows[0].values.length) return null;
   const row = rows[0].values[0];
+  saveDb();
   return {
     id: row[0], title: row[1], summary: row[2], coverUrl: row[3],
     genre: row[4], status: row[5], createdAt: row[6], updatedAt: row[7],

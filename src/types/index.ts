@@ -174,3 +174,16 @@ export interface TimelinePerspective {
 }
 
 export const TimelineCategories = ['重大事件', '角色事件', '世界事件', '章节事件', '其他'] as const;
+
+// Media Assets (设定集)
+export interface MediaAsset {
+  id: number;
+  projectId: number;
+  name: string;
+  type: 'image' | 'video' | 'audio';
+  url: string;
+  thumbnailUrl: string | null;
+  prompt: string;
+  source: 'upload' | 'generated';
+  createdAt: string;
+}

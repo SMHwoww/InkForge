@@ -12,6 +12,7 @@ import {
   ListTree,
   Stars,
   Timer,
+  Image,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { clsx } from 'clsx';
@@ -37,6 +38,7 @@ export function Sidebar({ onNewProject }: SidebarProps) {
     { id: 'starchart', label: '星图', icon: Stars, path: 'starchart' },
     { id: 'worldbuilding', label: '世界观', icon: Globe, path: 'worldbuilding' },
     { id: 'timeline', label: '时间轴', icon: Timer, path: 'timeline' },
+    { id: 'media', label: '设定集', icon: Image, path: 'media' },
   ];
 
   // Filter and sort modules based on config
