@@ -44,12 +44,16 @@ export interface ChatStreamOptions {
  * `onError(errorMessage)` on failure,
  * `onDone()` when streaming completes.
  */
+import { getBaseUrl } from '@/lib/tauri-env';
+
 export async function streamChatCompletion(options: ChatStreamOptions): Promise<void> {
   const { projectId, messages, context, onDelta, onError, onDone, signal,
     onToolCalls, onToolProgress, onToolResult } = options;
 
   try {
-    const response = await fetch('/api/ai/chat', {
+    const base = await getBaseUrl();
+    const apiPath = base ? `${base}/api/ai/chat` : '/api/ai/chat';
+    const response = await fetch(apiPath, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ projectId, messages, context: context || {} }),

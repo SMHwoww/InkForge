@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import Dashboard from "@/pages/Dashboard";
@@ -12,8 +13,32 @@ import StarChart from "@/pages/StarChart";
 import Timeline from "@/pages/Timeline";
 import Settings from "@/pages/Settings";
 import ToastContainer from "@/components/ui/Toast";
+import { UpdateDialog } from "@/components/UpdateDialog";
+import { checkForUpdates, type UpdateInfo } from "@/lib/updateChecker";
+import { getBaseUrl } from "@/lib/tauri-env";
 
 export default function App() {
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const base = await getBaseUrl();
+        const configUrl = base ? `${base}/api/config/update` : '/api/config/update';
+        const res = await fetch(configUrl);
+        const json = await res.json();
+        if (json.code !== 0 || !json.data?.checkEnabled) return;
+        const update = await checkForUpdates(json.data.includePrerelease);
+        if (update && !json.data.silent) {
+          setUpdateInfo(update);
+        }
+      } catch {
+        // 静默处理更新检查错误
+      }
+    };
+    check();
+  }, []);
+
   return (
     <Router>
       <Routes>
@@ -32,6 +57,16 @@ export default function App() {
         </Route>
       </Routes>
       <ToastContainer />
+      {updateInfo && (
+        <UpdateDialog
+          info={updateInfo}
+          onDismiss={() => setUpdateInfo(null)}
+          onDownload={() => {
+            window.open(updateInfo.url, '_blank');
+            setUpdateInfo(null);
+          }}
+        />
+      )}
     </Router>
   );
 }

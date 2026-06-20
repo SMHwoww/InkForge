@@ -3,12 +3,13 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { X, Plus, Trash2, RefreshCw, Loader2, CheckCircle2, XCircle, Plug, Sparkles, Server, Wrench, Globe, Terminal, Layers, GripVertical, Eye, EyeOff, AlertTriangle, Slash } from 'lucide-react';
+import { X, Plus, Trash2, RefreshCw, Loader2, CheckCircle2, XCircle, Plug, Sparkles, Server, Wrench, Globe, Terminal, Layers, GripVertical, Eye, EyeOff, AlertTriangle, Slash, Download } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useToastStore } from '@/stores/toastStore';
 import { useModuleConfigStore } from '@/stores/moduleConfigStore';
+import { getBaseUrl } from '@/lib/tauri-env';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -54,17 +55,29 @@ interface ReloadResult {
 
 // ─── API ────────────────────────────────────────────────────────────────────
 
+/**
+ * 构建完整的 API URL
+ * - 开发环境：使用相对路径 /api/...（Vite 代理到 localhost:3001）
+ * - Tauri 生产环境：使用绝对路径 http://127.0.0.1:{port}/api/...（Sidecar 后端）
+ */
+async function apiUrl(path: string): Promise<string> {
+  const base = await getBaseUrl();
+  return base ? `${base}${path}` : path;
+}
+
 const BASE = '/api/mcp';
 
 async function fetchMcpConfig(): Promise<McpConfigData> {
-  const res = await fetch(`${BASE}/config`);
+  const url = await apiUrl(`${BASE}/config`);
+  const res = await fetch(url);
   const json = await res.json();
   if (json.code !== 0) throw new Error(json.message);
   return json.data;
 }
 
 async function saveMcpConfig(data: { enabled: boolean; builtinEnabled: boolean; servers: McpServerConfig[] }): Promise<{ reloadResults: ReloadResult[] }> {
-  const res = await fetch(`${BASE}/config`, {
+  const url = await apiUrl(`${BASE}/config`);
+  const res = await fetch(url, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -75,14 +88,16 @@ async function saveMcpConfig(data: { enabled: boolean; builtinEnabled: boolean; 
 }
 
 async function reloadMcp(): Promise<{ results: ReloadResult[]; tools: McpToolInfo[] }> {
-  const res = await fetch(`${BASE}/reload`, { method: 'POST' });
+  const url = await apiUrl(`${BASE}/reload`);
+  const res = await fetch(url, { method: 'POST' });
   const json = await res.json();
   if (json.code !== 0) throw new Error(json.message);
   return json.data;
 }
 
 async function testMcpServer(cfg: McpServerConfig): Promise<{ success: boolean; toolCount: number; error?: string }> {
-  const res = await fetch(`${BASE}/test`, {
+  const url = await apiUrl(`${BASE}/test`);
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(cfg),
@@ -108,14 +123,16 @@ interface AiConfigData {
 }
 
 async function fetchAiConfig(): Promise<AiConfigData> {
-  const res = await fetch(AI_BASE);
+  const url = await apiUrl(AI_BASE);
+  const res = await fetch(url);
   const json = await res.json();
   if (json.code !== 0) throw new Error(json.message);
   return json.data;
 }
 
 async function saveAiConfigData(data: AiConfigData): Promise<void> {
-  const res = await fetch(AI_BASE, {
+  const url = await apiUrl(AI_BASE);
+  const res = await fetch(url, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -1004,7 +1021,167 @@ function AiConfigPanel() {
   );
 }
 
-// ─── Settings Page ──────────────────────────────────────────────────────────
+// ─── Update Config Panel ────────────────────────────────────────────────────
+
+interface UpdateConfigData {
+  checkEnabled: boolean;
+  includePrerelease: boolean;
+  autoDownload: boolean;
+  silent: boolean;
+}
+
+async function fetchUpdateConfig(): Promise<UpdateConfigData> {
+  const url = await apiUrl('/api/config/update');
+  const res = await fetch(url);
+  const json = await res.json();
+  if (json.code !== 0) throw new Error(json.message);
+  return json.data;
+}
+
+async function saveUpdateConfigData(data: Partial<UpdateConfigData>): Promise<void> {
+  const url = await apiUrl('/api/config/update');
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  const json = await res.json();
+  if (json.code !== 0) throw new Error(json.message);
+}
+
+function UpdateConfigPanel() {
+  const addToast = useToastStore(s => s.addToast);
+  const [loading, setLoading] = useState(true);
+  const [checkEnabled, setCheckEnabled] = useState(true);
+  const [includePrerelease, setIncludePrerelease] = useState(false);
+  const [autoDownload, setAutoDownload] = useState(true);
+  const [silent, setSilent] = useState(false);
+
+  useEffect(() => {
+    fetchUpdateConfig()
+      .then(data => {
+        setCheckEnabled(data.checkEnabled);
+        setIncludePrerelease(data.includePrerelease);
+        setAutoDownload(data.autoDownload);
+        setSilent(data.silent);
+      })
+      .catch(e => addToast(`加载更新配置失败: ${e.message}`, 'error'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleToggle = async (key: string, value: boolean) => {
+    const update = { [key]: value };
+    // Optimistic update
+    switch (key) {
+      case 'checkEnabled': setCheckEnabled(value); break;
+      case 'includePrerelease': setIncludePrerelease(value); break;
+      case 'autoDownload': setAutoDownload(value); break;
+      case 'silent': setSilent(value); break;
+    }
+    try {
+      await saveUpdateConfigData(update);
+    } catch (e: any) {
+      addToast(`保存失败: ${e.message}`, 'error');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 size={24} className="animate-spin text-[#c9a96e]/60" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      <section>
+        <h3 className="text-sm font-medium text-[#f5f0e8]/50 uppercase tracking-wider mb-4">更新设置</h3>
+        <p className="text-xs text-[#f5f0e8]/30 mb-6">
+          应用启动时自动通过 GitHub API 检查新版本。所有更新配置即时生效。
+        </p>
+
+        <div className="space-y-1">
+          {/* 检查更新 */}
+          <label className="flex items-center justify-between bg-[#1a1a2e]/40 border border-[#c9a96e]/6 rounded-lg px-4 py-3.5 cursor-pointer hover:border-[#c9a96e]/15 transition-colors">
+            <div className="flex items-center gap-3">
+              <RefreshCw size={17} className="text-[#f5f0e8]/40" />
+              <div>
+                <p className="text-sm font-medium text-[#f5f0e8]/90">检查更新</p>
+                <p className="text-xs text-[#f5f0e8]/30 mt-0.5">应用启动时自动检查是否有新版本</p>
+              </div>
+            </div>
+            <button
+              role="switch"
+              aria-checked={checkEnabled}
+              onClick={(e) => { e.preventDefault(); handleToggle('checkEnabled', !checkEnabled); }}
+              className={`relative w-10 h-5 rounded-full transition-colors ${checkEnabled ? 'bg-[#c9a96e]' : 'bg-[#f5f0e8]/10'}`}
+            >
+              <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${checkEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            </button>
+          </label>
+
+          {/* 检查预发布更新 */}
+          <label className="flex items-center justify-between bg-[#1a1a2e]/40 border border-[#c9a96e]/6 rounded-lg px-4 py-3.5 cursor-pointer hover:border-[#c9a96e]/15 transition-colors">
+            <div className="flex items-center gap-3">
+              <AlertTriangle size={17} className="text-[#f5f0e8]/40" />
+              <div>
+                <p className="text-sm font-medium text-[#f5f0e8]/90">检查预发布版本</p>
+                <p className="text-xs text-[#f5f0e8]/30 mt-0.5">同时检查标记为预发布（pre-release）的版本</p>
+              </div>
+            </div>
+            <button
+              role="switch"
+              aria-checked={includePrerelease}
+              onClick={(e) => { e.preventDefault(); handleToggle('includePrerelease', !includePrerelease); }}
+              className={`relative w-10 h-5 rounded-full transition-colors ${includePrerelease ? 'bg-[#c9a96e]' : 'bg-[#f5f0e8]/10'}`}
+            >
+              <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${includePrerelease ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            </button>
+          </label>
+
+          {/* 自动下载 */}
+          <label className="flex items-center justify-between bg-[#1a1a2e]/40 border border-[#c9a96e]/6 rounded-lg px-4 py-3.5 cursor-pointer hover:border-[#c9a96e]/15 transition-colors">
+            <div className="flex items-center gap-3">
+              <Download size={17} className="text-[#f5f0e8]/40" />
+              <div>
+                <p className="text-sm font-medium text-[#f5f0e8]/90">自动下载</p>
+                <p className="text-xs text-[#f5f0e8]/30 mt-0.5">发现新版本后自动下载安装包</p>
+              </div>
+            </div>
+            <button
+              role="switch"
+              aria-checked={autoDownload}
+              onClick={(e) => { e.preventDefault(); handleToggle('autoDownload', !autoDownload); }}
+              className={`relative w-10 h-5 rounded-full transition-colors ${autoDownload ? 'bg-[#c9a96e]' : 'bg-[#f5f0e8]/10'}`}
+            >
+              <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${autoDownload ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            </button>
+          </label>
+
+          {/* 静默更新 */}
+          <label className="flex items-center justify-between bg-[#1a1a2e]/40 border border-[#c9a96e]/6 rounded-lg px-4 py-3.5 cursor-pointer hover:border-[#c9a96e]/15 transition-colors">
+            <div className="flex items-center gap-3">
+              <Slash size={17} className="text-[#f5f0e8]/40" />
+              <div>
+                <p className="text-sm font-medium text-[#f5f0e8]/90">静默更新</p>
+                <p className="text-xs text-[#f5f0e8]/30 mt-0.5">下载完成后不弹窗询问，直接安装更新</p>
+              </div>
+            </div>
+            <button
+              role="switch"
+              aria-checked={silent}
+              onClick={(e) => { e.preventDefault(); handleToggle('silent', !silent); }}
+              className={`relative w-10 h-5 rounded-full transition-colors ${silent ? 'bg-[#c9a96e]' : 'bg-[#f5f0e8]/10'}`}
+            >
+              <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${silent ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            </button>
+          </label>
+        </div>
+      </section>
+    </div>
+  );
+}
 
 // ─── Module Config ──────────────────────────────────────────────────────────
 
@@ -1134,7 +1311,7 @@ function ModulesConfigPanel() {
 // ─── Settings Page ──────────────────────────────────────────────────────────
 
 export default function Settings() {
-  const [activeCategory, setActiveCategory] = useState<'ai' | 'mcp' | 'modules'>('ai');
+  const [activeCategory, setActiveCategory] = useState<'ai' | 'mcp' | 'modules' | 'update'>('ai');
 
   return (
     <div className="h-full flex">
@@ -1180,13 +1357,25 @@ export default function Settings() {
             <Layers size={17} />
             <span>模块管理</span>
           </button>
+          <button
+            onClick={() => setActiveCategory('update')}
+            className={clsx(
+              'w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors',
+              activeCategory === 'update'
+                ? 'bg-[#c9a96e]/10 text-[#c9a96e] border-r-2 border-[#c9a96e]'
+                : 'text-[#f5f0e8]/60 hover:text-[#f5f0e8]/80 hover:bg-[#c9a96e]/5',
+            )}
+          >
+            <Download size={17} />
+            <span>更新</span>
+          </button>
         </nav>
       </aside>
 
       {/* 右侧详情 */}
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-8 py-6">
-          {activeCategory === 'ai' ? <AiConfigPanel /> : activeCategory === 'mcp' ? <McpConfigPanel /> : <ModulesConfigPanel />}
+          {activeCategory === 'ai' ? <AiConfigPanel /> : activeCategory === 'mcp' ? <McpConfigPanel /> : activeCategory === 'modules' ? <ModulesConfigPanel /> : <UpdateConfigPanel />}
         </div>
       </main>
     </div>

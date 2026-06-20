@@ -8,7 +8,7 @@
  */
 
 import { Router, type Request, type Response } from 'express';
-import { loadConfig, saveConfig, reloadConfig } from '../services/mcpConfig.js';
+import { loadConfig, saveConfig, reloadConfig, getUpdateConfig } from '../services/mcpConfig.js';
 
 const router = Router();
 
@@ -155,6 +155,28 @@ router.put('/modules', (req: Request, res: Response) => {
   try {
     const updated = saveConfig({ modules: req.body });
     res.json({ code: 0, data: updated.modules, message: '模块配置已保存' });
+  } catch (e: any) {
+    res.status(400).json({ code: 400, message: e.message });
+  }
+});
+
+// ─── GET /api/config/update ────────────────────────────────────────────────────
+
+router.get('/update', (_req: Request, res: Response) => {
+  try {
+    const config = getUpdateConfig();
+    res.json({ code: 0, data: config, message: 'ok' });
+  } catch (e: any) {
+    res.status(500).json({ code: 500, message: e.message });
+  }
+});
+
+// ─── PUT /api/config/update ────────────────────────────────────────────────────
+
+router.put('/update', (req: Request, res: Response) => {
+  try {
+    const updated = saveConfig({ update: req.body });
+    res.json({ code: 0, data: updated.update, message: '更新配置已保存' });
   } catch (e: any) {
     res.status(400).json({ code: 400, message: e.message });
   }

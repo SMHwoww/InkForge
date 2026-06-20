@@ -7,6 +7,7 @@ import {
   TOOL_LABELS,
   buildAIdoSystemPrompt,
 } from '@/lib/aido';
+import { getBaseUrl } from '@/lib/tauri-env';
 import type { ChatMessage, ToolCallRecord } from '@/types';
 
 interface AIPanelProps {
@@ -36,7 +37,10 @@ export default function AIPanel({ projectId, contextPrompt, title, onClose }: AI
   }, [projectId]);
 
   useEffect(() => {
-    fetch('/api/mcp/config')
+    getBaseUrl().then(base => {
+      const url = base ? `${base}/api/mcp/config` : '/api/mcp/config';
+      return fetch(url);
+    })
       .then(r => r.json())
       .then(d => {
         if (d.code === 0 && d.data) {

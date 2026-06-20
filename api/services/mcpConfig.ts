@@ -79,6 +79,12 @@ export const AppConfigSchema = z.object({
     visible: z.record(z.boolean()).default({}),
     order: z.array(z.string()).default([]),
   }),
+  update: z.object({
+    checkEnabled: z.boolean().default(true),
+    includePrerelease: z.boolean().default(false),
+    autoDownload: z.boolean().default(true),
+    silent: z.boolean().default(false),
+  }),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;
@@ -106,6 +112,12 @@ const DEFAULT_CONFIG: AppConfig = {
   modules: {
     visible: {},
     order: [],
+  },
+  update: {
+    checkEnabled: true,
+    includePrerelease: false,
+    autoDownload: true,
+    silent: false,
   },
 };
 
@@ -138,6 +150,7 @@ export function loadConfig(): AppConfig {
           visible: parsed.modules?.visible || {},
           order: Array.isArray(parsed.modules?.order) ? parsed.modules.order : [],
         },
+        update: { ...DEFAULT_CONFIG.update, ...parsed.update },
       };
 
       // Validate
@@ -176,6 +189,7 @@ export function saveConfig(config: Partial<AppConfig>): AppConfig {
       visible: config.modules?.visible ?? current.modules.visible,
       order: config.modules?.order ?? current.modules.order,
     },
+    update: { ...current.update, ...config.update },
   };
 
   // Validate
@@ -222,6 +236,10 @@ export function getAiConfig() {
 
 export function getImageConfig() {
   return loadConfig().image;
+}
+
+export function getUpdateConfig() {
+  return loadConfig().update;
 }
 
 /** 获取内置 MCP 服务配置（始终启用，不可删除） */

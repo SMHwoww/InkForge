@@ -4,6 +4,7 @@ import { useChatStore } from '@/stores/chatStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { api } from '@/api/client';
 import { Button } from '@/components/ui/Button';
+import { getBaseUrl } from '@/lib/tauri-env';
 import { streamChatCompletion, type ToolCall, type ToolProgress, type ToolResult } from '@/lib/chat';
 import {
   type ToolCallDisplay,
@@ -73,7 +74,10 @@ export default function AIAssistant() {
 
   // Fetch MCP config to check builtinEnabled status
   useEffect(() => {
-    fetch('/api/mcp/config')
+    getBaseUrl().then(base => {
+      const url = base ? `${base}/api/mcp/config` : '/api/mcp/config';
+      return fetch(url);
+    })
       .then(r => r.json())
       .then(d => {
         if (d.code === 0 && d.data) {

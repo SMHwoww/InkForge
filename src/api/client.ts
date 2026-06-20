@@ -155,6 +155,11 @@ export const api = {
   saveModuleConfig: (data: { visible?: Record<string, boolean>; order?: string[] }) =>
     request<any>('/config/modules', { method: 'PUT', body: JSON.stringify(data) }),
 
+  // Update Config
+  getUpdateConfig: () => request<{ checkEnabled: boolean; includePrerelease: boolean; autoDownload: boolean; silent: boolean }>('/config/update'),
+  saveUpdateConfig: (data: { checkEnabled?: boolean; includePrerelease?: boolean; autoDownload?: boolean; silent?: boolean }) =>
+    request<any>('/config/update', { method: 'PUT', body: JSON.stringify(data) }),
+
   // Chat History
   getChatMessages: (projectId: number) =>
     request<any[]>(`/chat/${projectId}`),

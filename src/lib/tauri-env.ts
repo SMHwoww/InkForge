@@ -62,6 +62,18 @@ async function launchSidecar(): Promise<number> {
   try {
     const dataDir = await appDataDir();
     const command = Command.sidecar('binaries/inkforge-backend', ['--data-dir=' + dataDir]);
+
+    // 从 Sidecar stdout 中解析实际端口号
+    // 后端在 server.ts 中输出 INKFORGE_SERVER_PORT=<port> 行
+    let resolvedPort: number | null = null;
+    command.stdout.on('data', (line: string) => {
+      const match = line.match(/INKFORGE_SERVER_PORT=(\d+)/);
+      if (match) {
+        resolvedPort = parseInt(match[1], 10);
+        console.log(`[Tauri] 从 Sidecar stdout 解析到端口: ${resolvedPort}`);
+      }
+    });
+
     command.on('close', (data) => {
       console.log(`[Tauri] Sidecar 进程退出, code=${data.code}, signal=${data.signal}`);
     });
@@ -73,12 +85,14 @@ async function launchSidecar(): Promise<number> {
     console.log(`[Tauri] Sidecar 已 spawn, pid=${child.pid}`);
 
     // 轮询 health 端点等待服务就绪（最多等 15 秒）
-    const port = DEFAULT_PORT;
     const maxRetries = 30;
     const pollInterval = 500;
 
     for (let i = 0; i < maxRetries; i++) {
       await new Promise((r) => setTimeout(r, pollInterval));
+
+      // 优先使用从 stdout 解析到的端口，若尚未收到则回退到默认端口
+      const port = resolvedPort || DEFAULT_PORT;
       try {
         const res = await fetch(`http://127.0.0.1:${port}/api/health`);
         if (res.ok) {
