@@ -7,8 +7,26 @@
   ],
   "permissions": [
     "core:default",
-    "shell:allow-spawn",
-    "shell:allow-execute",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "binaries/inkforge-backend",
+          "sidecar": true,
+          "args": true
+        }
+      ]
+    },
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "binaries/inkforge-backend",
+          "sidecar": true,
+          "args": true
+        }
+      ]
+    },
     "shell:allow-open",
     "sql:default",
     "sql:allow-load",
