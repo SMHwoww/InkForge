@@ -58,3 +58,6 @@ src-tauri/gen/
 src-tauri/binaries/inkforge-backend*
 src-tauri/icons/android/
 src-tauri/icons/ios/
+
+#claude code
+.claude
