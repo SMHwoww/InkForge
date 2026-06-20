@@ -81,6 +81,20 @@ jobs:
           name: sidecar-${{ matrix.platform == 'ubuntu-22.04' && 'linux' || 'win' }}
           path: src-tauri/binaries/
 
+      - name: Read CHANGELOG.md
+        id: changelog
+        run: |
+          if [ -f "CHANGELOG.md" ]; then
+            CONTENT=$(cat CHANGELOG.md)
+            CONTENT="${CONTENT//'%'/'%25'}"
+            CONTENT="${CONTENT//$'\n'/'%0A'}"
+            CONTENT="${CONTENT//$'\r'/'%0D'}"
+            echo "content=$CONTENT" >> $GITHUB_OUTPUT
+          else
+            echo "content=## InkForge v__VERSION__" >> $GITHUB_OUTPUT
+          fi
+        shell: bash
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -88,27 +102,6 @@ jobs:
           args: ${{ matrix.args }}
           tagName: v__VERSION__
           releaseName: 'InkForge v__VERSION__'
-          releaseBody: |
-            ## 墨客工坊 InkForge v__VERSION__
-
-            首个 Tauri 桌面应用版本，支持 Windows / Linux 双平台。
-
-            ### 核心功能
-            - 项目管理：项目、章节、大纲的创建与管理
-            - 角色与世界观编辑器
-            - 星图（关系图谱）可视化
-            - 时间轴工具（多视角）
-            - AI 写作助手：流式聊天 + 工具调用
-            - MCP 协议支持（远程/本地工具服务器）
-            - AI 图片生成（百炼 wan2.6-t2i）
-            - 原生 SQLite 数据库，数据持久化本地
-            - GitHub API 自动检查更新
-
-            ### 安装说明
-            - **Windows**: 下载 `.msi` 或 `.exe` 安装包
-            - **Linux**: 下载 `.AppImage` 或 `.deb` 包
-
-            ### 完整更新日志
-            见 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/tauri/CHANGELOG.md)
+          releaseBody: ${{ steps.changelog.outputs.content }}
           releaseDraft: false
           prerelease: false
