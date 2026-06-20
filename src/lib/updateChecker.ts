@@ -9,6 +9,7 @@ import { isTauri } from '@/lib/tauri-env';
 
 const GITHUB_REPO = 'SMHwoww/InkForge';
 const CURRENT_VERSION = '0.1.0';
+// 与 src-tauri/tauri.conf.json 中的 version 字段保持同步
 
 export interface UpdateInfo {
   version: string;
