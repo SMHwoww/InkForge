@@ -6,8 +6,23 @@
  * - 环境变量：PORT=3001
  * - 自动分配：从 3001 开始寻找可用端口
  * - 作为 Sidecar 运行时，将端口号输出到 stdout，供 Tauri 前端解析
+ *
+ * Sidecar 数据目录：
+ * - 命令行参数：--data-dir=<path>
+ * - 环境变量：INKFORGE_DATA_DIR
+ * - 设置后，config.json 和 data/ 将从指定目录读写
  */
-import app from './app.js';
+
+// ⚠️ 必须在任何 import 之前设置 data dir，因为 import 的模块会在加载时使用该值
+const dataDirArg = process.argv.find((arg) => arg.startsWith('--data-dir='));
+if (dataDirArg) {
+  process.env.INKFORGE_DATA_DIR = dataDirArg.split('=')[1];
+  console.log(`[Server] 数据目录: ${process.env.INKFORGE_DATA_DIR}`);
+}
+
+// 动态导入 —— 确保 INKFORGE_DATA_DIR 在模块初始化前已设置
+const { default: app } = await import('./app.js');
+
 import net from 'net';
 
 /**

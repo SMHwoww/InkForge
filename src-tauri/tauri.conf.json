@@ -45,7 +45,14 @@
   },
   "plugins": {
     "shell": {
-      "open": true
+      "open": true,
+      "scope": [
+        {
+          "name": "binaries/inkforge-backend",
+          "sidecar": true,
+          "args": true
+        }
+      ]
     }
   }
 }

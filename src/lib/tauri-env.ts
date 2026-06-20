@@ -8,6 +8,7 @@
  */
 
 import { Command } from '@tauri-apps/plugin-shell';
+import { appDataDir } from '@tauri-apps/api/path';
 
 let _isTauri: boolean | null = null;
 let _backendPort: number | null = null;
@@ -48,37 +49,49 @@ export async function getBaseUrl(): Promise<string> {
 
 /**
  * 启动 Sidecar 后端并获取端口号
+ *
+ * 使用 spawn() 而非 execute()，因为后端是长期运行的服务器进程，
+ * execute() 会阻塞等待进程退出，导致永远不会返回。
+ * 改用轮询 /api/health 端点检测服务就绪。
  */
 async function launchSidecar(): Promise<number> {
+  const DEFAULT_PORT = 3001;
+
   console.log('[Tauri] 正在启动后端 Sidecar...');
 
   try {
-    const command = Command.sidecar('binaries/inkforge-backend');
-    const output = await command.execute();
+    const dataDir = await appDataDir();
+    const command = Command.sidecar('binaries/inkforge-backend', ['--data-dir=' + dataDir]);
+    command.on('close', (data) => {
+      console.log(`[Tauri] Sidecar 进程退出, code=${data.code}, signal=${data.signal}`);
+    });
+    command.on('error', (error) => {
+      console.error('[Tauri] Sidecar 进程错误:', error);
+    });
 
-    // 解析 stdout 中的端口号：INKFORGE_SERVER_PORT=3001
-    const stdout = output.stdout || '';
-    const portMatch = stdout.match(/INKFORGE_SERVER_PORT=(\d+)/);
+    const child = await command.spawn();
+    console.log(`[Tauri] Sidecar 已 spawn, pid=${child.pid}`);
 
-    if (portMatch) {
-      const port = parseInt(portMatch[1], 10);
-      console.log(`[Tauri] 后端 Sidecar 已启动，端口: ${port}`);
-      return port;
+    // 轮询 health 端点等待服务就绪（最多等 15 秒）
+    const port = DEFAULT_PORT;
+    const maxRetries = 30;
+    const pollInterval = 500;
+
+    for (let i = 0; i < maxRetries; i++) {
+      await new Promise((r) => setTimeout(r, pollInterval));
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/api/health`);
+        if (res.ok) {
+          console.log(`[Tauri] 后端 Sidecar 已就绪，端口: ${port}`);
+          return port;
+        }
+      } catch {
+        // 服务尚未就绪，继续等待
+      }
     }
 
-    // 如果无法从 stdout 解析，尝试从 stderr 解析
-    const stderr = output.stderr || '';
-    const stderrMatch = stderr.match(/INKFORGE_SERVER_PORT=(\d+)/);
-    if (stderrMatch) {
-      const port = parseInt(stderrMatch[1], 10);
-      console.log(`[Tauri] 后端 Sidecar 已启动，端口: ${port}`);
-      return port;
-    }
-
-    console.warn('[Tauri] 无法从 Sidecar 输出中解析端口号，使用默认端口 3001');
-    console.log('[Tauri] stdout:', stdout);
-    console.log('[Tauri] stderr:', stderr);
-    return 3001;
+    console.warn(`[Tauri] 后端未在 ${(maxRetries * pollInterval) / 1000}s 内就绪，使用默认端口 ${DEFAULT_PORT}`);
+    return DEFAULT_PORT;
   } catch (err) {
     console.error('[Tauri] Sidecar 启动失败:', err);
     throw new Error('后端服务启动失败');

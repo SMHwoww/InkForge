@@ -16,9 +16,18 @@ const currentDirname = typeof __dirname !== 'undefined'
   ? __dirname
   : path.dirname(fileURLToPath(import.meta.url));
 
-const dataDir = typeof INKFORGE_BUNDLED !== 'undefined'
-  ? path.join(path.dirname(process.execPath), 'data')
-  : path.join(currentDirname, '..', '..', 'data');
+const dataDir = (() => {
+  // Sidecar 模式：通过 --data-dir 参数或 INKFORGE_DATA_DIR 环境变量指定数据目录
+  if (process.env.INKFORGE_DATA_DIR) {
+    return path.join(process.env.INKFORGE_DATA_DIR, 'data');
+  }
+  // 打包模式：data/ 与可执行文件在同一目录
+  if (typeof INKFORGE_BUNDLED !== 'undefined') {
+    return path.join(path.dirname(process.execPath), 'data');
+  }
+  // 开发模式：项目根目录下的 data/
+  return path.join(currentDirname, '..', '..', 'data');
+})();
 const dbPath = path.join(dataDir, 'ward.db');
 
 let db: Database | null = null;
