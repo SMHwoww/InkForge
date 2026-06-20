@@ -93,7 +93,6 @@ jobs:
 
             ### 安装说明
             - **Windows**: 下载 `.msi` 或 `.exe` 安装包
-            - **macOS**: 下载 `.dmg` 文件，拖入 Applications 文件夹
             - **Linux**: 下载 `.AppImage` 或 `.deb` 包
 
             ### 更新内容
