@@ -15,7 +15,7 @@ import MediaAssets from "@/pages/MediaAssets";
 import Settings from "@/pages/Settings";
 import ToastContainer from "@/components/ui/Toast";
 import { UpdateDialog } from "@/components/UpdateDialog";
-import { checkForUpdates, type UpdateInfo } from "@/lib/updateChecker";
+import { checkForUpdates, startDownload, type UpdateInfo } from "@/lib/updateChecker";
 import { getBaseUrl } from "@/lib/tauri-env";
 
 export default function App() {
@@ -30,7 +30,19 @@ export default function App() {
         const json = await res.json();
         if (json.code !== 0 || !json.data?.checkEnabled) return;
         const update = await checkForUpdates(json.data.includePrerelease);
-        if (update && !json.data.silent) {
+        if (!update) return;
+
+        // 自动下载：后台静默下载，不阻塞用户
+        if (json.data.autoDownload && update.downloadUrl) {
+          try {
+            await startDownload(update.downloadUrl, update.version);
+            console.log('[Update] 自动下载已启动:', update.version);
+          } catch {
+            console.warn('[Update] 自动下载启动失败，将显示更新提示');
+          }
+        }
+
+        if (!json.data.silent) {
           setUpdateInfo(update);
         }
       } catch {

@@ -8,7 +8,11 @@
  */
 
 import { Router, type Request, type Response } from 'express';
+import path from 'path';
+import os from 'os';
 import { loadConfig, saveConfig, reloadConfig, getUpdateConfig } from '../services/mcpConfig.js';
+import { downloadFile, type DownloadResult } from '../services/downloaderService.js';
+import { logInfo, logError } from '../services/logger.js';
 
 const router = Router();
 
@@ -180,6 +184,80 @@ router.put('/update', (req: Request, res: Response) => {
   } catch (e: any) {
     res.status(400).json({ code: 400, message: e.message });
   }
+});
+
+// ─── POST /api/config/update/download ─────────────────────────────────────────
+
+// 存储进行中的下载任务
+const activeDownloads = new Map<string, { progress: number; total: number; status: 'downloading' | 'completed' | 'error'; result?: DownloadResult; error?: string }>();
+
+router.post('/update/download', async (req: Request, res: Response) => {
+  try {
+    const { url, version } = req.body;
+    if (!url) {
+      res.status(400).json({ code: 400, message: '缺少下载 URL' });
+      return;
+    }
+
+    const downloadId = `update-${version || 'latest'}-${Date.now()}`;
+    const ext = url.endsWith('.msi') ? '.msi' : url.endsWith('.exe') ? '.exe' : '.zip';
+    const destPath = path.join(os.tmpdir(), `inkforge-${version || 'latest'}${ext}`);
+
+    // 初始化下载状态
+    activeDownloads.set(downloadId, { progress: 0, total: 0, status: 'downloading' });
+
+    // 后台异步下载，不阻塞请求
+    downloadFile(url, {
+      destPath,
+      onProgress: (downloaded, total) => {
+        const existing = activeDownloads.get(downloadId);
+        if (existing) {
+          existing.progress = downloaded;
+          existing.total = total;
+        }
+      },
+      timeout: 300000, // 5 分钟超时
+      maxRetries: 1,
+    })
+      .then(result => {
+        activeDownloads.set(downloadId, {
+          ...activeDownloads.get(downloadId)!,
+          status: result.success ? 'completed' : 'error',
+          result,
+          error: result.error,
+        });
+        logInfo('Update', `Download ${result.success ? 'completed' : 'failed'}: ${url}`, { version, size: result.size });
+      })
+      .catch(err => {
+        const message = err instanceof Error ? err.message : String(err);
+        activeDownloads.set(downloadId, {
+          ...activeDownloads.get(downloadId)!,
+          status: 'error',
+          error: message,
+        });
+        logError('Update', `Download error for ${url}`, err);
+      });
+
+    res.json({
+      code: 0,
+      data: { downloadId, destPath },
+      message: '下载任务已启动',
+    });
+  } catch (e: any) {
+    res.status(500).json({ code: 500, message: e.message });
+  }
+});
+
+// ─── GET /api/config/update/download/:id ──────────────────────────────────────
+
+router.get('/update/download/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const download = activeDownloads.get(id);
+  if (!download) {
+    res.status(404).json({ code: 404, message: '下载任务不存在' });
+    return;
+  }
+  res.json({ code: 0, data: download, message: 'ok' });
 });
 
 export default router;

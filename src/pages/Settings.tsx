@@ -3,13 +3,14 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { X, Plus, Trash2, RefreshCw, Loader2, CheckCircle2, XCircle, Plug, Sparkles, Server, Wrench, Globe, Terminal, Layers, GripVertical, Eye, EyeOff, AlertTriangle, Slash, Download } from 'lucide-react';
+import { X, Plus, Trash2, RefreshCw, Loader2, CheckCircle2, XCircle, Plug, Sparkles, Server, Wrench, Globe, Terminal, Layers, GripVertical, Eye, EyeOff, AlertTriangle, Slash, Download, Info, ExternalLink, Copy } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useToastStore } from '@/stores/toastStore';
 import { useModuleConfigStore } from '@/stores/moduleConfigStore';
 import { getBaseUrl } from '@/lib/tauri-env';
+import { checkForUpdates, getCurrentVersion, type UpdateInfo } from '@/lib/updateChecker';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -1056,6 +1057,8 @@ function UpdateConfigPanel() {
   const [includePrerelease, setIncludePrerelease] = useState(false);
   const [autoDownload, setAutoDownload] = useState(true);
   const [silent, setSilent] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [checkResult, setCheckResult] = useState<UpdateInfo | null | 'up-to-date'>(null);
 
   useEffect(() => {
     fetchUpdateConfig()
@@ -1071,7 +1074,6 @@ function UpdateConfigPanel() {
 
   const handleToggle = async (key: string, value: boolean) => {
     const update = { [key]: value };
-    // Optimistic update
     switch (key) {
       case 'checkEnabled': setCheckEnabled(value); break;
       case 'includePrerelease': setIncludePrerelease(value); break;
@@ -1082,6 +1084,25 @@ function UpdateConfigPanel() {
       await saveUpdateConfigData(update);
     } catch (e: any) {
       addToast(`保存失败: ${e.message}`, 'error');
+    }
+  };
+
+  const handleManualCheck = async () => {
+    setChecking(true);
+    setCheckResult(null);
+    try {
+      const result = await checkForUpdates(includePrerelease);
+      if (result) {
+        setCheckResult(result);
+        addToast(`发现新版本: ${result.version}`, 'success');
+      } else {
+        setCheckResult('up-to-date');
+        addToast('当前已是最新版本', 'info');
+      }
+    } catch (e: any) {
+      addToast(`检查更新失败: ${e.message}`, 'error');
+    } finally {
+      setChecking(false);
     }
   };
 
@@ -1146,7 +1167,7 @@ function UpdateConfigPanel() {
               <Download size={17} className="text-[#f5f0e8]/40" />
               <div>
                 <p className="text-sm font-medium text-[#f5f0e8]/90">自动下载</p>
-                <p className="text-xs text-[#f5f0e8]/30 mt-0.5">发现新版本后自动下载安装包</p>
+                <p className="text-xs text-[#f5f0e8]/30 mt-0.5">发现新版本后自动后台下载安装包</p>
               </div>
             </div>
             <button
@@ -1178,6 +1199,59 @@ function UpdateConfigPanel() {
             </button>
           </label>
         </div>
+      </section>
+
+      {/* 手动检查 */}
+      <div className="border-t border-[#c9a96e]/8" />
+      <section>
+        <h3 className="text-sm font-medium text-[#f5f0e8]/50 uppercase tracking-wider mb-4">手动检查更新</h3>
+        <div className="flex items-center gap-4">
+          <Button
+            onClick={handleManualCheck}
+            disabled={checking}
+          >
+            <RefreshCw size={14} className={checking ? 'animate-spin' : ''} />
+            {checking ? '检查中...' : '立即检查更新'}
+          </Button>
+        </div>
+
+        {checkResult && checkResult !== 'up-to-date' && (
+          <div className="mt-4 p-4 bg-[#1a1a2e]/40 border border-[#c9a96e]/20 rounded-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles size={16} className="text-[#c9a96e]" />
+              <span className="text-sm font-semibold text-[#f5f0e8]">{checkResult.name}</span>
+              {checkResult.isPrerelease && (
+                <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-400/80 border border-amber-400/20">
+                  预发布
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-[#f5f0e8]/50 mb-2">
+              发布于 {new Date(checkResult.publishedAt).toLocaleDateString('zh-CN')}
+            </p>
+            {checkResult.body && (
+              <p className="text-sm text-[#f5f0e8]/70 whitespace-pre-wrap break-words">
+                {checkResult.body.length > 500 ? checkResult.body.slice(0, 500) + '...' : checkResult.body}
+              </p>
+            )}
+            <a
+              href={checkResult.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 mt-3 text-sm text-[#c9a96e] hover:text-[#c9a96e]/80 transition-colors"
+            >
+              <ExternalLink size={13} />
+              在 GitHub 上查看
+            </a>
+          </div>
+        )}
+
+        {checkResult === 'up-to-date' && (
+          <div className="mt-4 flex items-center gap-2 text-sm text-green-400 bg-green-500/10 px-3 py-2 rounded-lg">
+            <CheckCircle2 size={14} />
+            当前已是最新版本
+          </div>
+        )}
       </section>
     </div>
   );
@@ -1309,10 +1383,126 @@ function ModulesConfigPanel() {
   );
 }
 
+// ─── About Panel ────────────────────────────────────────────────────────────
+
+function AboutPanel() {
+  const version = getCurrentVersion();
+  const [showLicense, setShowLicense] = useState(false);
+
+  const licenseText = `MIT License
+
+Copyright (c) 2026 SMH
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.`;
+
+  const handleCopyLicense = () => {
+    navigator.clipboard.writeText(licenseText).then(() => {
+      // silently done
+    });
+  };
+
+  return (
+    <div className="space-y-8">
+      {/* 版本信息 */}
+      <section>
+        <h3 className="text-sm font-medium text-[#f5f0e8]/50 uppercase tracking-wider mb-4">关于</h3>
+        <div className="bg-[#1a1a2e]/40 border border-[#c9a96e]/10 rounded-xl p-6">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-[#c9a96e]/10 flex items-center justify-center">
+              <Info size={28} className="text-[#c9a96e]" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-[#f5f0e8]">墨客工坊 InkForge</h2>
+              <p className="text-sm text-[#f5f0e8]/50">小说作者一站式创作平台</p>
+              <p className="text-xs text-[#f5f0e8]/30 mt-1">Tauri 桌面应用</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 版本号 */}
+      <section>
+        <h3 className="text-sm font-medium text-[#f5f0e8]/50 uppercase tracking-wider mb-4">版本信息</h3>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between bg-[#1a1a2e]/40 border border-[#c9a96e]/6 rounded-lg px-4 py-3.5">
+            <span className="text-sm text-[#f5f0e8]/70">当前版本</span>
+            <span className="text-sm font-mono font-semibold text-[#c9a96e]">v{version}</span>
+          </div>
+          <div className="flex items-center justify-between bg-[#1a1a2e]/40 border border-[#c9a96e]/6 rounded-lg px-4 py-3.5">
+            <span className="text-sm text-[#f5f0e8]/70">构建平台</span>
+            <span className="text-sm text-[#f5f0e8]/50">Tauri 2.x (Windows / Linux)</span>
+          </div>
+          <div className="flex items-center justify-between bg-[#1a1a2e]/40 border border-[#c9a96e]/6 rounded-lg px-4 py-3.5">
+            <span className="text-sm text-[#f5f0e8]/70">许可证</span>
+            <button
+              onClick={() => setShowLicense(!showLicense)}
+              className="text-sm text-[#c9a96e] hover:text-[#c9a96e]/80 transition-colors"
+            >
+              MIT License
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* 版权声明（许可证） */}
+      {showLicense && (
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-medium text-[#f5f0e8]/50 uppercase tracking-wider">MIT 许可证</h3>
+            <button
+              onClick={handleCopyLicense}
+              className="flex items-center gap-1.5 text-xs text-[#f5f0e8]/40 hover:text-[#c9a96e] transition-colors"
+            >
+              <Copy size={12} />
+              复制
+            </button>
+          </div>
+          <div className="bg-[#1a1a2e]/40 border border-[#c9a96e]/10 rounded-lg p-5 max-h-64 overflow-y-auto">
+            <pre className="text-xs text-[#f5f0e8]/60 font-mono leading-relaxed whitespace-pre-wrap">
+              {licenseText}
+            </pre>
+          </div>
+        </section>
+      )}
+
+      {/* 版权声明 */}
+      <section>
+        <h3 className="text-sm font-medium text-[#f5f0e8]/50 uppercase tracking-wider mb-4">版权声明</h3>
+        <div className="bg-[#1a1a2e]/40 border border-[#c9a96e]/10 rounded-lg p-4">
+          <p className="text-sm text-[#f5f0e8]/60 leading-relaxed">
+            Copyright &copy; 2026 <span className="text-[#c9a96e]">SMH</span>.
+            基于 MIT 许可证开源发布。
+          </p>
+          <p className="text-xs text-[#f5f0e8]/30 mt-2 leading-relaxed">
+            本软件按"原样"提供，不作任何明示或默示的保证，包括但不限于对适销性、特定用途的适用性和非侵权性的保证。
+            在任何情况下，作者或版权持有人均不对任何索赔、损害或其他责任负责。
+          </p>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 // ─── Settings Page ──────────────────────────────────────────────────────────
 
 export default function Settings() {
-  const [activeCategory, setActiveCategory] = useState<'ai' | 'mcp' | 'modules' | 'update'>('ai');
+  const [activeCategory, setActiveCategory] = useState<'ai' | 'mcp' | 'modules' | 'update' | 'about'>('ai');
 
   return (
     <div className="h-full flex">
@@ -1370,13 +1560,25 @@ export default function Settings() {
             <Download size={17} />
             <span>更新</span>
           </button>
+          <button
+            onClick={() => setActiveCategory('about')}
+            className={clsx(
+              'w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors',
+              activeCategory === 'about'
+                ? 'bg-[#c9a96e]/10 text-[#c9a96e] border-r-2 border-[#c9a96e]'
+                : 'text-[#f5f0e8]/60 hover:text-[#f5f0e8]/80 hover:bg-[#c9a96e]/5',
+            )}
+          >
+            <Info size={17} />
+            <span>关于</span>
+          </button>
         </nav>
       </aside>
 
       {/* 右侧详情 */}
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-8 py-6">
-          {activeCategory === 'ai' ? <AiConfigPanel /> : activeCategory === 'mcp' ? <McpConfigPanel /> : activeCategory === 'modules' ? <ModulesConfigPanel /> : <UpdateConfigPanel />}
+          {activeCategory === 'ai' ? <AiConfigPanel /> : activeCategory === 'mcp' ? <McpConfigPanel /> : activeCategory === 'modules' ? <ModulesConfigPanel /> : activeCategory === 'about' ? <AboutPanel /> : <UpdateConfigPanel />}
         </div>
       </main>
     </div>
