@@ -66,3 +66,15 @@ export const timelineConfig = sqliteTable('timeline_config', {
   projectId: integer('project_id').notNull().unique().references(() => projects.id, { onDelete: 'cascade' }),
   xLabels: text('x_labels').notNull(),
 });
+
+export const mediaAssets = sqliteTable('media_assets', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  projectId: integer('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  type: text('type', { enum: ['image', 'video', 'audio'] }).notNull().default('image'),
+  url: text('url').notNull(),
+  thumbnailUrl: text('thumbnail_url'),
+  prompt: text('prompt').default(''),
+  source: text('source', { enum: ['upload', 'generated'] }).default('upload'),
+  createdAt: text('created_at').default(''),
+});

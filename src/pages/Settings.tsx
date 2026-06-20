@@ -1016,6 +1016,7 @@ const ALL_MODULES: { id: string; label: string }[] = [
   { id: 'starchart', label: '星图' },
   { id: 'worldbuilding', label: '世界观' },
   { id: 'timeline', label: '时间轴' },
+  { id: 'media', label: '设定集' },
 ];
 
 function ModulesConfigPanel() {

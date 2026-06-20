@@ -13,8 +13,9 @@ import {
 import type { ChatMessage } from '@/types';
 import type { ToolCallRecord } from '@/types';
 import { marked } from 'marked';
-import { Send, Sparkles, Lightbulb, FileText, Pencil, Wand2, Zap, Trash2, Loader2, Copy, RefreshCw, Image as ImageIcon, Wrench, CheckCircle, XCircle } from 'lucide-react';
+import { Send, Sparkles, Lightbulb, FileText, Pencil, Wand2, Zap, Trash2, Loader2, Copy, RefreshCw, Image as ImageIcon, Wrench, CheckCircle, XCircle, Bookmark, Check } from 'lucide-react';
 import { clsx } from 'clsx';
+import { useToastStore } from '@/stores/toastStore';
 
 // Configure marked
 marked.setOptions({ breaks: true, gfm: true });
@@ -39,6 +40,7 @@ export default function AIAssistant() {
     fetchCharacters, fetchWorldbuilding, fetchChapters,
     fetchTimeline, fetchOutlines,
   } = useProjectStore();
+  const addToast = useToastStore(s => s.addToast);
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -60,6 +62,8 @@ export default function AIAssistant() {
   const [imageTaskId, setImageTaskId] = useState('');
   const [imagePollingStatus, setImagePollingStatus] = useState('');
   const [imageError, setImageError] = useState('');
+  const [submittedUrls, setSubmittedUrls] = useState<Set<string>>(new Set());
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (projectId) {
@@ -230,6 +234,34 @@ export default function AIAssistant() {
 
     return () => clearInterval(interval);
   }, [imageTaskId, imagePollingStatus]);
+
+  // Submit generated image to 设定集
+  const handleSubmitToMedia = async (url: string, index: number) => {
+    if (!projectId) {
+      addToast('请先在项目中打开此功能', 'error');
+      return;
+    }
+    if (submittedUrls.has(url)) {
+      addToast('该图片已提交到设定集', 'info');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await api.createMediaAsset(projectId, {
+        name: `${imagePrompt.trim().slice(0, 30) || 'AI生成'} #${index + 1}`,
+        type: 'image',
+        url,
+        prompt: imagePrompt.trim(),
+        source: 'generated',
+      });
+      setSubmittedUrls(prev => new Set(prev).add(url));
+      addToast('已提交到设定集');
+    } catch (e: any) {
+      addToast(e.message || '提交失败', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -599,7 +631,9 @@ export default function AIAssistant() {
               <div className="space-y-3">
                 <h3 className="text-sm font-semibold text-[#f5f0e8]/60">生成结果</h3>
                 <div className="grid grid-cols-2 gap-3">
-                  {imageResults.map((url, i) => (
+                  {imageResults.map((url, i) => {
+                    const isSubmitted = submittedUrls.has(url);
+                    return (
                     <div key={i} className="relative group rounded-lg overflow-hidden border border-[#c9a96e]/10 bg-[#0f0f1a]">
                       <img
                         src={url}
@@ -609,16 +643,33 @@ export default function AIAssistant() {
                           (e.target as HTMLImageElement).style.display = 'none';
                         }}
                       />
-                      <a
-                        href={url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="absolute bottom-2 right-2 px-2 py-1 rounded bg-black/60 text-xs text-white/80 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        查看原图
-                      </a>
+                      <div className="absolute bottom-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => handleSubmitToMedia(url, i)}
+                          disabled={isSubmitted || submitting}
+                          className={clsx(
+                            'px-2 py-1 rounded text-xs transition-colors flex items-center gap-1',
+                            isSubmitted
+                              ? 'bg-green-600/60 text-white/90'
+                              : 'bg-[#c9a96e]/80 hover:bg-[#c9a96e] text-white',
+                          )}
+                          title={isSubmitted ? '已提交到设定集' : '提交到设定集'}
+                        >
+                          {isSubmitted ? <Check size={11} /> : <Bookmark size={11} />}
+                          {isSubmitted ? '已提交' : '设定集'}
+                        </button>
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2 py-1 rounded bg-black/60 text-xs text-white/80"
+                        >
+                          查看原图
+                        </a>
+                      </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}

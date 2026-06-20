@@ -18,6 +18,7 @@ export default function Worldbuilding() {
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ category: '地理', title: '', content: '' });
+  const [creating, setCreating] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
 
@@ -30,13 +31,16 @@ export default function Worldbuilding() {
 
   const handleCreate = async () => {
     if (!form.title.trim()) return;
+    setCreating(true);
     try {
       await createWorldbuilding(projectId, form);
       setShowCreate(false);
       setForm({ category: '地理', title: '', content: '' });
-    } catch (e) {
-      console.error('创建世界观条目失败:', e);
+      addToast('世界观条目创建成功');
+    } catch (e: any) {
+      addToast(e.message || '创建世界观条目失败', 'error');
     }
+    setCreating(false);
   };
 
   const handleDelete = async (itemId: number) => {
@@ -189,7 +193,9 @@ export default function Worldbuilding() {
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="ghost" onClick={() => setShowCreate(false)}>取消</Button>
-            <Button onClick={handleCreate} disabled={!form.title.trim()}>创建条目</Button>
+            <Button onClick={handleCreate} disabled={!form.title.trim() || creating}>
+              {creating ? '创建中...' : '创建条目'}
+            </Button>
           </div>
         </div>
       </Modal>

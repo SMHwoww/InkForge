@@ -25,6 +25,7 @@ import mcpRoutes from './routes/mcp.js'
 import configRoutes from './routes/config.js'
 import imageRoutes from './routes/image.js'
 import chatRoutes from './routes/chat.js'
+import mediaRoutes from './routes/media.js'
 
 // for esm mode
 const __filename = fileURLToPath(import.meta.url)
@@ -68,6 +69,7 @@ app.use('/api/mcp', mcpRoutes)
 app.use('/api/image', imageRoutes)
 app.use('/api/config', configRoutes)
 app.use('/api/chat', chatRoutes)
+app.use('/api/projects/:projectId/media', mediaRoutes)
 
 /**
  * health

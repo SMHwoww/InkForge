@@ -202,6 +202,20 @@ export async function initDatabase() {
     );
 
     CREATE INDEX IF NOT EXISTS idx_chat_project ON chat_messages(project_id);
+
+    CREATE TABLE IF NOT EXISTS media_assets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'image' CHECK(type IN ('image', 'video', 'audio')),
+      url TEXT NOT NULL,
+      thumbnail_url TEXT,
+      prompt TEXT DEFAULT '',
+      source TEXT DEFAULT 'upload' CHECK(source IN ('upload', 'generated')),
+      created_at TEXT DEFAULT (datetime('now', 'localtime'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_media_project ON media_assets(project_id);
   `);
 
   // Migration: add columns to existing timeline_events table

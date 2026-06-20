@@ -83,6 +83,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   createProject: async (data) => {
     const project = await api.createProject(data);
+    if (!project) throw new Error('创建项目失败：服务器返回空数据');
     set({ projects: [project, ...get().projects] });
     return project;
   },

@@ -25,6 +25,9 @@ export default function ProjectWorkspace() {
     setCreating(true);
     try {
       const project = await createProject(newProject);
+      if (!project?.id) {
+        throw new Error('创建项目失败：返回数据异常');
+      }
       setShowCreate(false);
       setNewProject({ title: '', summary: '', genre: '' });
       addToast('项目创建成功');

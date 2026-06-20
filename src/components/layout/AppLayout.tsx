@@ -5,10 +5,12 @@ import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { useProjectStore } from '@/stores/projectStore';
+import { useToastStore } from '@/stores/toastStore';
 
 export function AppLayout() {
   const navigate = useNavigate();
   const createProject = useProjectStore(s => s.createProject);
+  const addToast = useToastStore(s => s.addToast);
   const [showNewProject, setShowNewProject] = useState(false);
   const [newProject, setNewProject] = useState({ title: '', summary: '', genre: '' });
   const [creating, setCreating] = useState(false);
@@ -18,11 +20,15 @@ export function AppLayout() {
     setCreating(true);
     try {
       const project = await createProject(newProject);
+      if (!project?.id) {
+        throw new Error('创建项目失败：返回数据异常');
+      }
       setShowNewProject(false);
       setNewProject({ title: '', summary: '', genre: '' });
+      addToast('项目创建成功');
       navigate(`/projects/${project.id}/characters`);
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      addToast(e.message || '创建项目失败', 'error');
     }
     setCreating(false);
   };

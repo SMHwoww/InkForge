@@ -10,6 +10,7 @@ import ChapterEditor from "@/pages/ChapterEditor";
 import OutlineEditor from "@/pages/OutlineEditor";
 import StarChart from "@/pages/StarChart";
 import Timeline from "@/pages/Timeline";
+import MediaAssets from "@/pages/MediaAssets";
 import Settings from "@/pages/Settings";
 import ToastContainer from "@/components/ui/Toast";
 
@@ -28,6 +29,7 @@ export default function App() {
           <Route path="/projects/:id/outlines" element={<OutlineEditor />} />
           <Route path="/projects/:id/starchart" element={<StarChart />} />
           <Route path="/projects/:id/timeline" element={<Timeline />} />
+          <Route path="/projects/:id/media" element={<MediaAssets />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
       </Routes>
