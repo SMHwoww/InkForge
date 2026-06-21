@@ -1,17 +1,14 @@
-import { getDb, saveDb } from '../db/index.js';
+import { getDb } from '../db/index.js';
+import { relationEdges, graphNodes } from '../db/schema.js';
+import { eq, sql } from 'drizzle-orm';
 
 export async function getRelations(projectId: number) {
-  const db = await getDb();
-  const rows = db.exec(
-    `SELECT * FROM relation_edges WHERE project_id = ?`,
-    [projectId],
-  );
-  if (!rows.length) return [];
-  return rows[0].values.map(row => ({
-    id: row[0], projectId: row[1], sourceCharId: row[2], targetCharId: row[3],
-    relationType: row[4], label: row[5], description: row[6],
-    sourceX: row[7], sourceY: row[8], targetX: row[9], targetY: row[10],
-  }));
+  const db = getDb();
+  return db
+    .select()
+    .from(relationEdges)
+    .where(eq(relationEdges.projectId, projectId))
+    .all();
 }
 
 export async function saveRelations(projectId: number, edges: Array<{
@@ -19,57 +16,65 @@ export async function saveRelations(projectId: number, edges: Array<{
   relationType: string; label: string; description: string;
   sourceX: number; sourceY: number; targetX: number; targetY: number;
 }>) {
-  const db = await getDb();
-  db.run('DELETE FROM relation_edges WHERE project_id = ?', [projectId]);
+  const db = getDb();
+  db.delete(relationEdges).where(eq(relationEdges.projectId, projectId)).run();
 
   if (edges.length === 0) {
-    saveDb();
     return [];
   }
 
   for (const e of edges) {
-    db.run(
-      `INSERT INTO relation_edges (project_id, source_char_id, target_char_id, relation_type, label, description, source_x, source_y, target_x, target_y) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [projectId, e.sourceCharId, e.targetCharId, e.relationType, e.label, e.description, e.sourceX, e.sourceY, e.targetX, e.targetY],
-    );
+    db.insert(relationEdges).values({
+      projectId,
+      sourceCharId: e.sourceCharId as any,
+      targetCharId: e.targetCharId as any,
+      relationType: e.relationType,
+      label: e.label,
+      description: e.description,
+      sourceX: e.sourceX,
+      sourceY: e.sourceY,
+      targetX: e.targetX,
+      targetY: e.targetY,
+    } as any).run();
   }
-  saveDb();
+
   return getRelations(projectId);
 }
 
 // Graph Nodes
 export async function getGraphNodes(projectId: number) {
-  const db = await getDb();
-  const rows = db.exec(
-    `SELECT * FROM graph_nodes WHERE project_id = ? ORDER BY id`,
-    [projectId],
-  );
-  if (!rows.length) return [];
-  return rows[0].values.map(row => ({
-    id: row[0], projectId: row[1], nodeType: row[2], label: row[3],
-    description: row[4], charId: row[5], posX: row[6], posY: row[7],
-    styleData: row[8], createdAt: row[9], updatedAt: row[10],
-  }));
+  const db = getDb();
+  return db
+    .select()
+    .from(graphNodes)
+    .where(eq(graphNodes.projectId, projectId))
+    .orderBy(sql`id`)
+    .all();
 }
 
 export async function saveGraphNodes(projectId: number, nodes: Array<{
   id: string; nodeType: string; label: string; description: string;
   charId?: number | null; posX: number; posY: number; styleData?: string;
 }>) {
-  const db = await getDb();
-  db.run('DELETE FROM graph_nodes WHERE project_id = ?', [projectId]);
+  const db = getDb();
+  db.delete(graphNodes).where(eq(graphNodes.projectId, projectId)).run();
 
   if (nodes.length === 0) {
-    saveDb();
     return [];
   }
 
   for (const n of nodes) {
-    db.run(
-      `INSERT INTO graph_nodes (project_id, node_type, label, description, char_id, pos_x, pos_y, style_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [projectId, n.nodeType, n.label, n.description || '', n.charId || null, n.posX, n.posY, n.styleData || '{}'],
-    );
+    db.insert(graphNodes).values({
+      projectId,
+      nodeType: n.nodeType,
+      label: n.label,
+      description: n.description || '',
+      charId: n.charId ?? null,
+      posX: n.posX,
+      posY: n.posY,
+      styleData: n.styleData || '{}',
+    } as any).run();
   }
-  saveDb();
+
   return getGraphNodes(projectId);
 }

@@ -1,114 +1,52 @@
 import { Router } from 'express';
 import * as starchartService from '../services/starchartService.js';
+import { validateRequest } from '../middlewares/validateRequest.js';
+import { asyncHandler } from '../common/asyncHandler.js';
+import { NotFoundError } from '../common/errors.js';
+import { projectIdParam, projectIdAndNodeIdParam, projectIdAndEdgeIdParam, createNodeBody, updateNodeBody, createEdgeBody, updateEdgeBody } from '../schemas/index.js';
 
 const router = Router({ mergeParams: true });
 
-// GET whole star chart data
-router.get('/', async (req, res) => {
-  try {
-    const projectId = Number((req.params as any).projectId);
-    const data = await starchartService.getStarChart(projectId);
-    res.json({ code: 0, data, message: 'ok' });
-  } catch (e) {
-    console.error('Get star chart error:', e);
-    res.status(500).json({ code: 500, message: '获取星图数据失败' });
-  }
-});
+router.get('/', validateRequest({ params: projectIdParam }), asyncHandler(async (req, res) => {
+  const data = await starchartService.getStarChart(Number(req.params.projectId));
+  res.json({ code: 0, data, message: 'ok' });
+}));
 
-// PUT save entire star chart
-router.put('/', async (req, res) => {
-  try {
-    const projectId = Number((req.params as any).projectId);
-    const data = await starchartService.saveStarChart(projectId, req.body);
-    res.json({ code: 0, data, message: '保存成功' });
-  } catch (e) {
-    console.error('Save star chart error:', e);
-    res.status(500).json({ code: 500, message: '保存星图失败' });
-  }
-});
+router.put('/', validateRequest({ params: projectIdParam }), asyncHandler(async (req, res) => {
+  const data = await starchartService.saveStarChart(Number(req.params.projectId), req.body);
+  res.json({ code: 0, data, message: '保存成功' });
+}));
 
-// POST create node
-router.post('/nodes', async (req, res) => {
-  try {
-    const projectId = Number((req.params as any).projectId);
-    const node = await starchartService.createNode(projectId, req.body);
-    if (!node) {
-      res.status(500).json({ code: 500, message: '创建节点失败' });
-      return;
-    }
-    res.json({ code: 0, data: node, message: '创建成功' });
-  } catch (e) {
-    console.error('Create node error:', e);
-    res.status(500).json({ code: 500, message: '创建节点失败' });
-  }
-});
+router.post('/nodes', validateRequest({ params: projectIdParam, body: createNodeBody }), asyncHandler(async (req, res) => {
+  const node = await starchartService.createNode(Number(req.params.projectId), req.body);
+  res.json({ code: 0, data: node, message: '创建成功' });
+}));
 
-// PUT update node
-router.put('/nodes/:nodeId', async (req, res) => {
-  try {
-    const node = await starchartService.updateNode(Number(req.params.nodeId), req.body);
-    if (!node) {
-      res.status(404).json({ code: 404, message: '节点不存在' });
-      return;
-    }
-    res.json({ code: 0, data: node, message: '更新成功' });
-  } catch (e) {
-    console.error('Update node error:', e);
-    res.status(500).json({ code: 500, message: '更新节点失败' });
-  }
-});
+router.put('/nodes/:nodeId', validateRequest({ params: projectIdAndNodeIdParam, body: updateNodeBody }), asyncHandler(async (req, res) => {
+  const node = await starchartService.updateNode(Number(req.params.nodeId), req.body);
+  if (!node) throw new NotFoundError('节点不存在');
+  res.json({ code: 0, data: node, message: '更新成功' });
+}));
 
-// DELETE node
-router.delete('/nodes/:nodeId', async (req, res) => {
-  try {
-    await starchartService.deleteNode(Number(req.params.nodeId));
-    res.json({ code: 0, data: null, message: '删除成功' });
-  } catch (e) {
-    console.error('Delete node error:', e);
-    res.status(500).json({ code: 500, message: '删除节点失败' });
-  }
-});
+router.delete('/nodes/:nodeId', validateRequest({ params: projectIdAndNodeIdParam }), asyncHandler(async (req, res) => {
+  await starchartService.deleteNode(Number(req.params.nodeId));
+  res.json({ code: 0, data: null, message: '删除成功' });
+}));
 
-// POST create edge
-router.post('/edges', async (req, res) => {
-  try {
-    const projectId = Number((req.params as any).projectId);
-    const edge = await starchartService.createEdge(projectId, req.body);
-    if (!edge) {
-      res.status(500).json({ code: 500, message: '创建连线失败' });
-      return;
-    }
-    res.json({ code: 0, data: edge, message: '创建成功' });
-  } catch (e) {
-    console.error('Create edge error:', e);
-    res.status(500).json({ code: 500, message: '创建连线失败' });
-  }
-});
+router.post('/edges', validateRequest({ params: projectIdParam, body: createEdgeBody }), asyncHandler(async (req, res) => {
+  const edge = await starchartService.createEdge(Number(req.params.projectId), req.body);
+  res.json({ code: 0, data: edge, message: '创建成功' });
+}));
 
-// PUT update edge
-router.put('/edges/:edgeId', async (req, res) => {
-  try {
-    const edge = await starchartService.updateEdge(Number(req.params.edgeId), req.body);
-    if (!edge) {
-      res.status(404).json({ code: 404, message: '连线不存在' });
-      return;
-    }
-    res.json({ code: 0, data: edge, message: '更新成功' });
-  } catch (e) {
-    console.error('Update edge error:', e);
-    res.status(500).json({ code: 500, message: '更新连线失败' });
-  }
-});
+router.put('/edges/:edgeId', validateRequest({ params: projectIdAndEdgeIdParam, body: updateEdgeBody }), asyncHandler(async (req, res) => {
+  const edge = await starchartService.updateEdge(Number(req.params.edgeId), req.body);
+  if (!edge) throw new NotFoundError('连线不存在');
+  res.json({ code: 0, data: edge, message: '更新成功' });
+}));
 
-// DELETE edge
-router.delete('/edges/:edgeId', async (req, res) => {
-  try {
-    await starchartService.deleteEdge(Number(req.params.edgeId));
-    res.json({ code: 0, data: null, message: '删除成功' });
-  } catch (e) {
-    console.error('Delete edge error:', e);
-    res.status(500).json({ code: 500, message: '删除连线失败' });
-  }
-});
+router.delete('/edges/:edgeId', validateRequest({ params: projectIdAndEdgeIdParam }), asyncHandler(async (req, res) => {
+  await starchartService.deleteEdge(Number(req.params.edgeId));
+  res.json({ code: 0, data: null, message: '删除成功' });
+}));
 
 export default router;

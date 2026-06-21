@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
-import { Plus, User, Trash2, Edit3, Search, Grid3X3, List } from 'lucide-react';
+import { Plus, User, Trash2, Edit3, Grid3X3, List } from 'lucide-react';
 import { useToastStore } from '@/stores/toastStore';
 
 export default function Characters() {
@@ -16,17 +16,12 @@ export default function Characters() {
   const addToast = useToastStore(s => s.addToast);
   const [showCreate, setShowCreate] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [search, setSearch] = useState('');
   const [form, setForm] = useState({ name: '', role: '', gender: '', personality: '', background: '' });
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     if (projectId) fetchCharacters(projectId);
   }, [projectId]);
-
-  const filtered = characters.filter(c =>
-    c.name.includes(search) || c.role.includes(search)
-  );
 
   const handleCreate = async () => {
     if (!form.name.trim()) return;
@@ -58,15 +53,6 @@ export default function Characters() {
           <p className="text-[#f5f0e8]/40 text-sm mt-1">{characters.length} 个角色</p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#f5f0e8]/30" />
-            <input
-              className="bg-[#1a1a2e]/60 border border-[#c9a96e]/20 rounded-lg pl-9 pr-4 py-2 text-sm text-[#f5f0e8] placeholder:text-[#f5f0e8]/30 focus:outline-none focus:border-[#c9a96e]/60 w-48"
-              placeholder="搜索角色..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-          </div>
           <div className="flex rounded-lg border border-[#c9a96e]/20 overflow-hidden">
             <button
               onClick={() => setViewMode('grid')}
@@ -88,7 +74,7 @@ export default function Characters() {
         </div>
       </div>
 
-      {filtered.length === 0 ? (
+      {characters.length === 0 ? (
         <Card className="text-center py-16">
           <User size={48} className="mx-auto mb-4 text-[#c9a96e]/20" />
           <p className="text-[#f5f0e8]/40 mb-4">还没有角色，创建你的第一个角色吧</p>
@@ -99,7 +85,7 @@ export default function Characters() {
         </Card>
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filtered.map(char => (
+          {characters.map(char => (
             <Card
               key={char.id}
               hover
@@ -135,7 +121,7 @@ export default function Characters() {
         </div>
       ) : (
         <div className="space-y-2">
-          {filtered.map(char => (
+          {characters.map(char => (
             <div
               key={char.id}
               className="flex items-center gap-4 p-4 rounded-xl bg-[#2d4a3e]/30 border border-[#c9a96e]/8 hover:border-[#c9a96e]/20 cursor-pointer transition-colors"

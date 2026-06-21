@@ -1,46 +1,48 @@
-import initSqlJs, { type Database } from 'sql.js';
+/**
+ * Database connection and initialization
+ * Uses better-sqlite3 for persistent file-based SQLite with WAL mode.
+ */
+
+import Database from 'better-sqlite3';
+import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import * as schema from './schema.js';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const dataDir = path.join(__dirname, '..', '..', 'data');
 const dbPath = path.join(dataDir, 'ward.db');
 
-let db: Database | null = null;
+let _db: BetterSQLite3Database<typeof schema> | null = null;
+let _rawDb: Database.Database | null = null;
 
-export async function getDb(): Promise<Database> {
-  if (db) return db;
+export function getDb(): BetterSQLite3Database<typeof schema> {
+  if (!_db) {
+    throw new Error('Database not initialized. Call initDatabase() first.');
+  }
+  return _db;
+}
 
+export function getRawDb(): Database.Database {
+  if (!_rawDb) {
+    throw new Error('Database not initialized. Call initDatabase() first.');
+  }
+  return _rawDb;
+}
+
+export async function initDatabase(): Promise<void> {
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
   }
 
-  const SQL = await initSqlJs();
+  const rawDb = new Database(dbPath);
+  rawDb.pragma('journal_mode = WAL');
+  rawDb.pragma('foreign_keys = ON');
 
-  if (fs.existsSync(dbPath)) {
-    const buffer = fs.readFileSync(dbPath);
-    db = new SQL.Database(buffer);
-  } else {
-    db = new SQL.Database();
-  }
-
-  db.run('PRAGMA foreign_keys = ON');
-  return db;
-}
-
-export function saveDb() {
-  if (db) {
-    const data = db.export();
-    const buffer = Buffer.from(data);
-    fs.writeFileSync(dbPath, buffer);
-  }
-}
-
-export async function initDatabase() {
-  const database = await getDb();
-  database.run(`
+  // Create tables
+  rawDb.exec(`
     CREATE TABLE IF NOT EXISTS projects (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
@@ -66,7 +68,6 @@ export async function initDatabase() {
       created_at TEXT DEFAULT (datetime('now', 'localtime')),
       updated_at TEXT DEFAULT (datetime('now', 'localtime'))
     );
-
     CREATE INDEX IF NOT EXISTS idx_characters_project ON characters(project_id);
 
     CREATE TABLE IF NOT EXISTS worldbuilding_items (
@@ -79,7 +80,6 @@ export async function initDatabase() {
       created_at TEXT DEFAULT (datetime('now', 'localtime')),
       updated_at TEXT DEFAULT (datetime('now', 'localtime'))
     );
-
     CREATE INDEX IF NOT EXISTS idx_worldbuilding_project ON worldbuilding_items(project_id);
     CREATE INDEX IF NOT EXISTS idx_worldbuilding_category ON worldbuilding_items(project_id, category);
 
@@ -94,7 +94,6 @@ export async function initDatabase() {
       created_at TEXT DEFAULT (datetime('now', 'localtime')),
       updated_at TEXT DEFAULT (datetime('now', 'localtime'))
     );
-
     CREATE INDEX IF NOT EXISTS idx_chapters_project ON chapters(project_id);
 
     CREATE TABLE IF NOT EXISTS outline_items (
@@ -110,9 +109,36 @@ export async function initDatabase() {
       created_at TEXT DEFAULT (datetime('now', 'localtime')),
       updated_at TEXT DEFAULT (datetime('now', 'localtime'))
     );
-
     CREATE INDEX IF NOT EXISTS idx_outline_project ON outline_items(project_id);
     CREATE INDEX IF NOT EXISTS idx_outline_parent ON outline_items(parent_id);
+
+    CREATE TABLE IF NOT EXISTS relation_edges (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      source_char_id INTEGER NOT NULL,
+      target_char_id INTEGER NOT NULL,
+      relation_type TEXT DEFAULT '',
+      label TEXT DEFAULT '',
+      description TEXT DEFAULT '',
+      source_x REAL DEFAULT 0,
+      source_y REAL DEFAULT 0,
+      target_x REAL DEFAULT 0,
+      target_y REAL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS graph_nodes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      node_type TEXT DEFAULT '',
+      label TEXT DEFAULT '',
+      description TEXT DEFAULT '',
+      char_id INTEGER,
+      pos_x REAL DEFAULT 0,
+      pos_y REAL DEFAULT 0,
+      style_data TEXT DEFAULT '{}',
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+    );
 
     CREATE TABLE IF NOT EXISTS star_map_nodes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -127,7 +153,6 @@ export async function initDatabase() {
       created_at TEXT DEFAULT (datetime('now', 'localtime')),
       updated_at TEXT DEFAULT (datetime('now', 'localtime'))
     );
-
     CREATE INDEX IF NOT EXISTS idx_star_nodes_project ON star_map_nodes(project_id);
 
     CREATE TABLE IF NOT EXISTS star_map_edges (
@@ -141,7 +166,6 @@ export async function initDatabase() {
       created_at TEXT DEFAULT (datetime('now', 'localtime')),
       updated_at TEXT DEFAULT (datetime('now', 'localtime'))
     );
-
     CREATE INDEX IF NOT EXISTS idx_star_edges_project ON star_map_edges(project_id);
 
     CREATE TABLE IF NOT EXISTS timeline_events (
@@ -158,7 +182,6 @@ export async function initDatabase() {
       created_at TEXT DEFAULT (datetime('now', 'localtime')),
       updated_at TEXT DEFAULT (datetime('now', 'localtime'))
     );
-
     CREATE INDEX IF NOT EXISTS idx_timeline_project ON timeline_events(project_id);
     CREATE INDEX IF NOT EXISTS idx_timeline_sort ON timeline_events(project_id, sort_order);
 
@@ -170,7 +193,6 @@ export async function initDatabase() {
       created_at TEXT DEFAULT (datetime('now', 'localtime')),
       updated_at TEXT DEFAULT (datetime('now', 'localtime'))
     );
-
     CREATE INDEX IF NOT EXISTS idx_perspective_project ON timeline_perspectives(project_id);
 
     CREATE TABLE IF NOT EXISTS timeline_config (
@@ -200,7 +222,6 @@ export async function initDatabase() {
       tool_calls TEXT,
       created_at TEXT DEFAULT (datetime('now', 'localtime'))
     );
-
     CREATE INDEX IF NOT EXISTS idx_chat_project ON chat_messages(project_id);
 
     CREATE TABLE IF NOT EXISTS media_assets (
@@ -214,17 +235,17 @@ export async function initDatabase() {
       source TEXT DEFAULT 'upload' CHECK(source IN ('upload', 'generated')),
       created_at TEXT DEFAULT (datetime('now', 'localtime'))
     );
-
     CREATE INDEX IF NOT EXISTS idx_media_project ON media_assets(project_id);
   `);
 
-  // Migration: add columns to existing timeline_events table
-  try { database.run('ALTER TABLE timeline_events ADD COLUMN placed INTEGER DEFAULT 0'); } catch (_) {}
-  try { database.run('ALTER TABLE timeline_events ADD COLUMN pos_x INTEGER'); } catch (_) {}
-  try { database.run('ALTER TABLE timeline_events ADD COLUMN pos_y INTEGER'); } catch (_) {}
+  // Migrations for existing databases
+  try { rawDb.exec('ALTER TABLE timeline_events ADD COLUMN placed INTEGER DEFAULT 0'); } catch (_) {}
+  try { rawDb.exec('ALTER TABLE timeline_events ADD COLUMN pos_x INTEGER'); } catch (_) {}
+  try { rawDb.exec('ALTER TABLE timeline_events ADD COLUMN pos_y INTEGER'); } catch (_) {}
+  try { rawDb.exec('ALTER TABLE chat_messages ADD COLUMN tool_calls TEXT'); } catch (_) {}
 
-  // Migration: add tool_calls column to chat_messages
-  try { database.run('ALTER TABLE chat_messages ADD COLUMN tool_calls TEXT'); } catch (_) {}
+  _rawDb = rawDb;
+  _db = drizzle(rawDb, { schema });
 
-  saveDb();
+  console.log('[DB] Database initialized with WAL mode');
 }

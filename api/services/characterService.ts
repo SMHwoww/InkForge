@@ -1,74 +1,69 @@
-import { getDb, saveDb } from '../db/index.js';
+import { getDb } from '../db/index.js';
+import { characters } from '../db/schema.js';
+import { eq, and, sql } from 'drizzle-orm';
 
 export async function getCharacterList(projectId: number) {
-  const db = await getDb();
-  const rows = db.exec(
-    `SELECT id, name, role, avatar_url, background FROM characters WHERE project_id = ? ORDER BY id DESC`,
-    [projectId],
-  );
-  if (!rows.length) return [];
-  return rows[0].values.map(row => ({
-    id: row[0], name: row[1], role: row[2], avatarUrl: row[3], summary: row[4],
-  }));
+  const db = getDb();
+  return db
+    .select({
+      id: characters.id,
+      name: characters.name,
+      role: characters.role,
+      avatarUrl: characters.avatarUrl,
+      summary: characters.background,
+    })
+    .from(characters)
+    .where(eq(characters.projectId, projectId))
+    .orderBy(sql`id DESC`)
+    .all();
 }
 
-export async function getCharacter(id: number) {
-  const db = await getDb();
-  const rows = db.exec(`SELECT * FROM characters WHERE id = ?`, [id]);
-  if (!rows.length || !rows[0].values.length) return null;
-  const row = rows[0].values[0];
-  return {
-    id: row[0], projectId: row[1], name: row[2], role: row[3],
-    gender: row[4], age: row[5], appearance: row[6], personality: row[7],
-    background: row[8], avatarUrl: row[9], createdAt: row[10], updatedAt: row[11],
-  };
+export async function getCharacter(projectId: number, id: number) {
+  const db = getDb();
+  return db.select().from(characters).where(and(eq(characters.projectId, projectId), eq(characters.id, id))).get() ?? null;
 }
 
 export async function createCharacter(projectId: number, data: {
   name: string; role?: string; gender?: string; age?: number;
   appearance?: string; personality?: string; background?: string;
 }) {
-  const db = await getDb();
+  const db = getDb();
   const now = new Date().toISOString();
-  db.run(
-    `INSERT INTO characters (project_id, name, role, gender, age, appearance, personality, background, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [projectId, data.name, data.role || '', data.gender || '', data.age || null, data.appearance || '', data.personality || '', data.background || '', now, now],
-  );
-  const idResult = db.exec('SELECT last_insert_rowid()');
-  const id = idResult[0].values[0][0] as number;
-  const rows = db.exec(`SELECT * FROM characters WHERE id = ?`, [id]);
-  if (!rows.length || !rows[0].values.length) return null;
-  const row = rows[0].values[0];
-  saveDb();
-  return {
-    id: row[0], projectId: row[1], name: row[2], role: row[3],
-    gender: row[4], age: row[5], appearance: row[6], personality: row[7],
-    background: row[8], avatarUrl: row[9], createdAt: row[10], updatedAt: row[11],
-  };
+  return db.insert(characters).values({
+    projectId,
+    name: data.name,
+    role: data.role || '',
+    gender: data.gender || '',
+    age: data.age ?? null,
+    appearance: data.appearance || '',
+    personality: data.personality || '',
+    background: data.background || '',
+    createdAt: now,
+    updatedAt: now,
+  } as any).returning().get();
 }
 
-export async function updateCharacter(id: number, data: Partial<{
+export async function updateCharacter(projectId: number, id: number, data: Partial<{
   name: string; role: string; gender: string; age: number;
   appearance: string; personality: string; background: string; avatarUrl: string;
 }>) {
-  const db = await getDb();
+  const db = getDb();
   const now = new Date().toISOString();
-  const sets: string[] = ['updated_at = ?'];
-  const values: any[] = [now];
-  for (const [key, val] of Object.entries(data)) {
-    const col = key === 'avatarUrl' ? 'avatar_url' : key;
-    sets.push(`${col} = ?`);
-    values.push(val);
-  }
-  values.push(id);
-  db.run(`UPDATE characters SET ${sets.join(', ')} WHERE id = ?`, values);
-  saveDb();
-  return getCharacter(id);
+  const updateData: any = { updatedAt: now };
+  if (data.name !== undefined) updateData.name = data.name;
+  if (data.role !== undefined) updateData.role = data.role;
+  if (data.gender !== undefined) updateData.gender = data.gender;
+  if (data.age !== undefined) updateData.age = data.age;
+  if (data.appearance !== undefined) updateData.appearance = data.appearance;
+  if (data.personality !== undefined) updateData.personality = data.personality;
+  if (data.background !== undefined) updateData.background = data.background;
+  if (data.avatarUrl !== undefined) updateData.avatarUrl = data.avatarUrl;
+  db.update(characters).set(updateData).where(and(eq(characters.projectId, projectId), eq(characters.id, id))).run();
+  return getCharacter(projectId, id);
 }
 
-export async function deleteCharacter(id: number) {
-  const db = await getDb();
-  db.run('DELETE FROM characters WHERE id = ?', [id]);
-  saveDb();
+export async function deleteCharacter(projectId: number, id: number) {
+  const db = getDb();
+  db.delete(characters).where(and(eq(characters.projectId, projectId), eq(characters.id, id))).run();
   return { success: true };
 }

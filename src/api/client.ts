@@ -217,4 +217,11 @@ export const api = {
     if (json.code !== 0) throw new Error(json.message || '上传失败');
     return json.data;
   },
+
+  // 全局搜索
+  search: (query: string, projectId?: number) => {
+    const params = new URLSearchParams({ q: query });
+    if (projectId) params.set('projectId', String(projectId));
+    return request<any[]>(`/search?${params.toString()}`);
+  },
 };
