@@ -13,6 +13,7 @@ import { fileURLToPath } from 'url'
 import { initDatabase } from './db/index.js'
 import { loadConfig, getMcpEnabled, loadMcpServerConfigs } from './services/mcpConfig.js';
 import { initializeMcp } from './services/mcpClient.js'
+import { errorHandler } from './middlewares/errorHandler.js'
 import projectRoutes from './routes/projects.js'
 import characterRoutes from './routes/characters.js'
 import worldbuildingRoutes from './routes/worldbuilding.js'
@@ -20,6 +21,8 @@ import chapterRoutes from './routes/chapters.js'
 import outlineRoutes from './routes/outlines.js'
 import starchartRoutes from './routes/starchart.js'
 import timelineRoutes from './routes/timeline.js'
+import relationRoutes from './routes/relations.js'
+import searchRoutes from './routes/search.js'
 import aiRoutes from './routes/ai.js'
 import mcpRoutes from './routes/mcp.js'
 import configRoutes from './routes/config.js'
@@ -80,6 +83,8 @@ app.use('/api/projects/:projectId/chapters', chapterRoutes)
 app.use('/api/projects/:projectId/outlines', outlineRoutes)
 app.use('/api/projects/:projectId/starchart', starchartRoutes)
 app.use('/api/projects/:projectId/timeline', timelineRoutes)
+app.use('/api/projects/:projectId/relations', relationRoutes)
+app.use('/api/search', searchRoutes)
 app.use('/api/ai', aiRoutes)
 app.use('/api/mcp', mcpRoutes)
 app.use('/api/image', imageRoutes)
@@ -114,15 +119,9 @@ const clientDist = path.join(currentDirname, '..', 'dist');
 }
 
 /**
- * error handler middleware
+ * Global error handler middleware
  */
-app.use((error: Error, req: Request, res: Response, next: NextFunction) => {
-  console.error('Server error:', error.message);
-  res.status(500).json({
-    code: 500,
-    message: '服务器内部错误',
-  })
-})
+app.use(errorHandler)
 
 /**
  * 404 handler

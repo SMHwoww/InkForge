@@ -13,7 +13,12 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { getDb, saveDb } from '../db/index.js';
+import { getDb } from '../db/index.js';
+import { mediaAssets } from '../db/schema.js';
+import { eq, and, sql } from 'drizzle-orm';
+import { validateRequest } from '../middlewares/validateRequest.js';
+import { asyncHandler } from '../common/asyncHandler.js';
+import { projectIdParam, projectIdAndMediaIdParam, createMediaBody, updateMediaBody } from '../schemas/index.js';
 
 // INKFORGE_BUNDLED is injected by esbuild define at build time.
 // When bundled to CJS, __dirname is out of scope (esbuild wraps each file
@@ -81,206 +86,6 @@ async function downloadToLocal(url: string, projectId: string | number, type: st
   return filename;
 }
 
-// ─── GET /api/projects/:projectId/media ─────────────────────────────────────
-
-router.get('/', async (req: Request, res: Response) => {
-  try {
-    const projectId = Number(req.params.projectId);
-    if (!projectId) {
-      res.status(400).json({ code: 400, message: 'projectId 无效' });
-      return;
-    }
-
-    const db = await getDb();
-    const rows = db.exec(
-      `SELECT * FROM media_assets WHERE project_id = ? ORDER BY created_at DESC`,
-      [projectId],
-    );
-
-    const columns = rows[0]?.columns || [];
-    const values = rows[0]?.values || [];
-    const result = values.map((row: any[]) => {
-      const obj: any = {};
-      columns.forEach((col: string, i: number) => { obj[col] = row[i]; });
-      return obj;
-    });
-
-    res.json({ code: 0, data: result, message: 'ok' });
-  } catch (e: any) {
-    console.error('[Media] List error:', e);
-    res.status(500).json({ code: 500, message: e.message || '服务器内部错误' });
-  }
-});
-
-// ─── POST /api/projects/:projectId/media/upload ─────────────────────────────
-
-router.post('/upload', upload.single('file'), async (req: Request, res: Response) => {
-  try {
-    const projectId = Number(req.params.projectId);
-    if (!projectId) {
-      res.status(400).json({ code: 400, message: 'projectId 无效' });
-      return;
-    }
-
-    const file = req.file;
-    if (!file) {
-      res.status(400).json({ code: 400, message: '请选择文件' });
-      return;
-    }
-
-    const name = req.body.name || file.originalname;
-    const type = req.body.type || guessType(file.mimetype);
-    const prompt = req.body.prompt || '';
-    const source = req.body.source || 'upload';
-
-    // 本地路径
-    const localFilename = file.filename;
-    const url = `/media/${projectId}/${localFilename}`;
-
-    const db = await getDb();
-    db.run(
-      `INSERT INTO media_assets (project_id, name, type, url, thumbnail_url, prompt, source)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [projectId, name, type, url, null, prompt, source],
-    );
-    saveDb();
-
-    const lastId = (db.exec('SELECT last_insert_rowid() as id')[0]?.values?.[0]?.[0]) as number;
-
-    res.json({ code: 0, data: { id: lastId, url }, message: 'ok' });
-  } catch (e: any) {
-    console.error('[Media] Upload error:', e);
-    res.status(500).json({ code: 500, message: e.message || '服务器内部错误' });
-  }
-});
-
-// ─── POST /api/projects/:projectId/media ────────────────────────────────────
-
-router.post('/', async (req: Request, res: Response) => {
-  try {
-    const projectId = Number(req.params.projectId);
-    if (!projectId) {
-      res.status(400).json({ code: 400, message: 'projectId 无效' });
-      return;
-    }
-
-    const { name, type, url, prompt, source } = req.body;
-
-    if (!name || !url) {
-      res.status(400).json({ code: 400, message: 'name 和 url 不能为空' });
-      return;
-    }
-
-    const mediaType = type || 'image';
-    let finalUrl = url;
-    let localFilename: string | null = null;
-
-    // 如果是外部 URL，下载到本地备份
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      try {
-        localFilename = await downloadToLocal(url, projectId, mediaType);
-        finalUrl = `/media/${projectId}/${localFilename}`;
-      } catch (e: any) {
-        console.warn('[Media] Failed to download backup:', e.message);
-        // 下载失败不阻塞，仍使用原始 URL
-      }
-    }
-
-    const db = await getDb();
-    db.run(
-      `INSERT INTO media_assets (project_id, name, type, url, thumbnail_url, prompt, source)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [projectId, name, mediaType, finalUrl, null, prompt || '', source || 'upload'],
-    );
-    saveDb();
-
-    const lastId = (db.exec('SELECT last_insert_rowid() as id')[0]?.values?.[0]?.[0]) as number;
-
-    res.json({ code: 0, data: { id: lastId, url: finalUrl }, message: 'ok' });
-  } catch (e: any) {
-    console.error('[Media] Create error:', e);
-    res.status(500).json({ code: 500, message: e.message || '服务器内部错误' });
-  }
-});
-
-// ─── PUT /api/projects/:projectId/media/:id ─────────────────────────────────
-
-router.put('/:id', async (req: Request, res: Response) => {
-  try {
-    const projectId = Number(req.params.projectId);
-    const id = Number(req.params.id);
-    if (!projectId || !id) {
-      res.status(400).json({ code: 400, message: '参数无效' });
-      return;
-    }
-
-    const { name, prompt } = req.body;
-    const db = await getDb();
-
-    const updates: string[] = [];
-    const values: any[] = [];
-
-    if (name !== undefined) {
-      updates.push('name = ?');
-      values.push(name);
-    }
-    if (prompt !== undefined) {
-      updates.push('prompt = ?');
-      values.push(prompt);
-    }
-
-    if (updates.length === 0) {
-      res.status(400).json({ code: 400, message: '没有需要更新的字段' });
-      return;
-    }
-
-    values.push(id, projectId);
-    db.run(
-      `UPDATE media_assets SET ${updates.join(', ')} WHERE id = ? AND project_id = ?`,
-      values,
-    );
-    saveDb();
-
-    res.json({ code: 0, data: null, message: 'ok' });
-  } catch (e: any) {
-    console.error('[Media] Update error:', e);
-    res.status(500).json({ code: 500, message: e.message || '服务器内部错误' });
-  }
-});
-
-// ─── DELETE /api/projects/:projectId/media/:id ──────────────────────────────
-
-router.delete('/:id', async (req: Request, res: Response) => {
-  try {
-    const projectId = Number(req.params.projectId);
-    const id = Number(req.params.id);
-    if (!projectId || !id) {
-      res.status(400).json({ code: 400, message: '参数无效' });
-      return;
-    }
-
-    const db = await getDb();
-
-    // 先查 URL 是否为本地文件
-    const rows = db.exec('SELECT url FROM media_assets WHERE id = ? AND project_id = ?', [id, projectId]);
-    const url = rows[0]?.values?.[0]?.[0] as string | undefined;
-
-    db.run('DELETE FROM media_assets WHERE id = ? AND project_id = ?', [id, projectId]);
-    saveDb();
-
-    // 删除本地文件
-    if (url && url.startsWith('/media/')) {
-      const filepath = path.join(MEDIA_ROOT, url.replace('/media/', ''));
-      try { if (fs.existsSync(filepath)) fs.unlinkSync(filepath); } catch (e) { /* ignore */ }
-    }
-
-    res.json({ code: 0, data: null, message: 'ok' });
-  } catch (e: any) {
-    console.error('[Media] Delete error:', e);
-    res.status(500).json({ code: 500, message: e.message || '服务器内部错误' });
-  }
-});
-
 // 辅助：根据 MIME 类型猜测媒体类型
 function guessType(mime: string): string {
   if (mime.startsWith('image/')) return 'image';
@@ -288,5 +93,137 @@ function guessType(mime: string): string {
   if (mime.startsWith('audio/')) return 'audio';
   return 'image';
 }
+
+// ─── GET /api/projects/:projectId/media ─────────────────────────────────────
+
+router.get('/', validateRequest({ params: projectIdParam }), asyncHandler(async (req: Request, res: Response) => {
+  const projectId = Number(req.params.projectId);
+  const db = getDb();
+  const result = db
+    .select()
+    .from(mediaAssets)
+    .where(eq(mediaAssets.projectId, projectId))
+    .orderBy(sql`created_at DESC`)
+    .all();
+  res.json({ code: 0, data: result, message: 'ok' });
+}));
+
+// ─── POST /api/projects/:projectId/media/upload ─────────────────────────────
+
+router.post('/upload', upload.single('file'), asyncHandler(async (req: Request, res: Response) => {
+  const projectId = Number(req.params.projectId);
+
+  const file = req.file;
+  if (!file) {
+    res.status(400).json({ code: 400, message: '请选择文件' });
+    return;
+  }
+
+  const name = req.body.name || file.originalname;
+  const type = req.body.type || guessType(file.mimetype);
+  const prompt = req.body.prompt || '';
+  const source = req.body.source || 'upload';
+
+  const localFilename = file.filename;
+  const url = `/media/${projectId}/${localFilename}`;
+
+  const db = getDb();
+  const result = db.insert(mediaAssets).values({
+    projectId,
+    name,
+    type: type as any,
+    url,
+    thumbnailUrl: null,
+    prompt,
+    source: source as any,
+  } as any).returning().get();
+
+  res.json({ code: 0, data: { id: result.id, url }, message: 'ok' });
+}));
+
+// ─── POST /api/projects/:projectId/media ────────────────────────────────────
+
+router.post('/', validateRequest({ params: projectIdParam, body: createMediaBody }), asyncHandler(async (req: Request, res: Response) => {
+  const projectId = Number(req.params.projectId);
+  const { name, type, url, prompt, source } = req.body;
+
+  const mediaType = type || 'image';
+  let finalUrl = url;
+  let localFilename: string | null = null;
+
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    try {
+      localFilename = await downloadToLocal(url, projectId, mediaType);
+      finalUrl = `/media/${projectId}/${localFilename}`;
+    } catch (e: any) {
+      console.warn('[Media] Failed to download backup:', e.message);
+    }
+  }
+
+  const db = getDb();
+  const result = db.insert(mediaAssets).values({
+    projectId,
+    name,
+    type: mediaType as any,
+    url: finalUrl,
+    thumbnailUrl: null,
+    prompt: prompt || '',
+    source: (source || 'upload') as any,
+  } as any).returning().get();
+
+  res.json({ code: 0, data: { id: result.id, url: finalUrl }, message: 'ok' });
+}));
+
+// ─── PUT /api/projects/:projectId/media/:id ─────────────────────────────────
+
+router.put('/:id', validateRequest({ params: projectIdAndMediaIdParam, body: updateMediaBody }), asyncHandler(async (req: Request, res: Response) => {
+  const projectId = Number(req.params.projectId);
+  const id = Number(req.params.id);
+
+  const { name, prompt } = req.body;
+  const updateData: any = {};
+
+  if (name !== undefined) updateData.name = name;
+  if (prompt !== undefined) updateData.prompt = prompt;
+
+  if (Object.keys(updateData).length === 0) {
+    res.status(400).json({ code: 400, message: '没有需要更新的字段' });
+    return;
+  }
+
+  const db = getDb();
+  db.update(mediaAssets)
+    .set(updateData)
+    .where(and(eq(mediaAssets.id, id), eq(mediaAssets.projectId, projectId)))
+    .run();
+
+  res.json({ code: 0, data: null, message: 'ok' });
+}));
+
+// ─── DELETE /api/projects/:projectId/media/:id ──────────────────────────────
+
+router.delete('/:id', validateRequest({ params: projectIdAndMediaIdParam }), asyncHandler(async (req: Request, res: Response) => {
+  const projectId = Number(req.params.projectId);
+  const id = Number(req.params.id);
+
+  const db = getDb();
+
+  const row = db
+    .select({ url: mediaAssets.url })
+    .from(mediaAssets)
+    .where(and(eq(mediaAssets.id, id), eq(mediaAssets.projectId, projectId)))
+    .get();
+
+  db.delete(mediaAssets)
+    .where(and(eq(mediaAssets.id, id), eq(mediaAssets.projectId, projectId)))
+    .run();
+
+  if (row?.url && row.url.startsWith('/media/')) {
+    const filepath = path.join(MEDIA_ROOT, row.url.replace('/media/', ''));
+    try { if (fs.existsSync(filepath)) fs.unlinkSync(filepath); } catch (e) { /* ignore */ }
+  }
+
+  res.json({ code: 0, data: null, message: 'ok' });
+}));
 
 export default router;

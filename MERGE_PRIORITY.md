@@ -68,12 +68,17 @@ Tauri 分支将初始化延后到 `server.ts` 调用 `initializeApp()`，确保 
 
 ### 2.3 `api/db/index.ts` — 数据库路径动态化
 
+> **2026-06-21 更新**：main 分支已从 sql.js 迁移到 better-sqlite3 + Drizzle ORM，与 Tauri 分支的数据库引擎一致。冲突域缩小为**路径解析方式**。
+
 | 区域 | main | Tauri | 优先 |
 |------|------|------|------|
-| 路径 | 固定 `../../data/ward.db` | `getDataDir()` 惰性求值 | **Tauri** |
-| 路径来源 | 无 | `INKFORGE_DATA_DIR` → `process.execPath` → 项目相对路径 | **Tauri** |
-| WASM 加载 | `initSqlJs()` | 生产环境注入 Base64 WASM | **Tauri** |
+| 数据库引擎 | better-sqlite3 + Drizzle ORM | better-sqlite3 + Drizzle ORM | 一致 |
+| 路径计算 | 固定 `dataDir`/`dbPath` 变量（模块顶层计算） | `getDataDir()`/`getDbPath()` 惰性函数求值 | **Tauri** |
+| 路径来源 | 仅 `__dirname` fallback | `INKFORGE_DATA_DIR` → `process.execPath` → 项目相对路径 | **Tauri** |
 | `__dirname` | `const __dirname = ...` | `declare var __dirname;` + fallback | **Tauri** |
+| 构建标识 | 无 | `INKFORGE_BUNDLED` define（esbuild 注入） | **Tauri** |
+
+**冲突解决策略**：采用 main 的 better-sqlite3 + Drizzle ORM 代码，但保留 Tauri 的 `getDataDir()`/`getDbPath()` 惰性函数求值及 `INKFORGE_DATA_DIR`/`INKFORGE_BUNDLED` 支持。
 
 ### 2.4 `api/services/mcpConfig.ts` — 配置文件路径动态化
 
@@ -89,6 +94,24 @@ Tauri 分支将初始化延后到 `server.ts` 调用 `initializeApp()`，确保 
 
 ---
 
+## 2.5 后端中间件与验证层（Shared Infrastructure — 2026-06 重构引入）
+
+> main 分支在本次重构中引入了以下新文件，Tauri 分支已完整合入。这些是共享基础设施，未来合并时双方平等对待。
+
+| 文件 | 功能 | 合并策略 |
+|------|------|----------|
+| `api/common/errors.ts` | 自定义错误类（`AppError`, `NotFoundError`, `ValidationError` 等） | 双方平等合并 |
+| `api/common/asyncHandler.ts` | 异步路由处理器包装，消除 try/catch 模板 | 双方平等合并 |
+| `api/middlewares/errorHandler.ts` | 全局错误中间件，统一错误响应格式 | 双方平等合并 |
+| `api/middlewares/validateRequest.ts` | Zod 请求验证中间件（body/params/query） | 双方平等合并 |
+| `api/schemas/index.ts` | 30+ Zod Schema 定义，统一 API 契约 | 双方平等合并 |
+| `api/routes/search.ts` | 全局搜索 API（跨 7 种实体类型） | 双方平等合并 |
+| `src/components/GlobalSearch.tsx` | 全局搜索 UI 组件（Ctrl+K 快捷键） | 双方平等合并 |
+
+**注意**：`api/routes/*.ts` 路由文件已全部重构为使用 `validateRequest` + `asyncHandler` 模式。合并时若 main 修改了路由处理函数逻辑，应直接采用；若 Tauri 修改了路由处理函数逻辑，需要在新模式下重新实现。
+
+---
+
 ## 3. 依赖与构建配置（Tauri Priority）
 
 ### 3.1 `package.json`
@@ -97,6 +120,7 @@ Tauri 分支将初始化延后到 `server.ts` 调用 `initializeApp()`，确保 
 |------|----------|
 | Tauri 相关 dependencies | `@tauri-apps/api`, `@tauri-apps/plugin-shell`, `@tauri-apps/plugin-sql` — **必须保留** |
 | Tauri CLI devDependency | `@tauri-apps/cli` — **必须保留** |
+| Better-SQLite3 类型 | `@types/better-sqlite3` — **必须保留**（main 新增） |
 | Sidecar 构建工具 | `esbuild`, `postject` — **必须保留** |
 | 已移除的依赖 | `babel-plugin-react-dev-locator`, `vite-plugin-trae-solo-badge` — **不可重新引入** |
 | scripts | `tauri`, `tauri:dev`, `tauri:build`, `sidecar:build` — **必须保留** |
@@ -105,8 +129,8 @@ Tauri 分支将初始化延后到 `server.ts` 调用 `initializeApp()`，确保 
 
 | 区域 | main | Tauri | 优先 |
 |------|------|------|------|
-| React 插件 | `react({ babel: { plugins: ['react-dev-locator'] } })` | `react()` | **Tauri** — 不引入 babel locator |
-| traeBadgePlugin | 有 | 无 | **Tauri** — 已移除广告注入 |
+| `base` | 无（默认 `/`） | `base: './'`（相对路径，Tauri 生产必需） | **Tauri** |
+| React 插件 | `react()` | `react()` | 一致 |
 | server.watch | 无 | `ignored: ['**/src-tauri/target/**']` | **Tauri** |
 
 ### 3.3 `.gitignore`
@@ -225,5 +249,3 @@ Tauri 分支在 Settings 页面中新增：
 - **手动检查更新**：`UpdateConfigPanel` 中新增"立即检查更新"按钮，显示检查结果（新版本详情或已是最新）
 - **关于页面**：`AboutPanel` 组件，显示版本号 `v0.2.0`、构建平台（Tauri 2.x）、MIT License 全文（可展开/复制）、版权声明
 - **导航**：侧边栏新增"关于"标签页
-
-上述内容在 main 合并时必须保留。

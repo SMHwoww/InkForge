@@ -5,7 +5,18 @@
  * 读取和修改能力。此服务始终启用，不可删除。
  */
 
-import { getDb, saveDb } from '../db/index.js';
+import { getDb } from '../db/index.js';
+import {
+  projects,
+  chapters,
+  outlineItems,
+  worldbuildingItems,
+  characters,
+  starMapNodes,
+  starMapEdges,
+  timelineEvents,
+} from '../db/schema.js';
+import { eq, and, sql } from 'drizzle-orm';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -319,278 +330,306 @@ function row(obj: any): any {
   return clean;
 }
 
+function toJson(data: any): string {
+  return JSON.stringify(data, null, 2);
+}
+
 // ── 项目 ──
 
 async function handleListProjects(): Promise<string> {
-  const db = await getDb();
-  const rows = db.exec('SELECT * FROM projects ORDER BY updated_at DESC');
-  if (!rows.length || !rows[0].values.length) return '当前没有任何项目。';
-  const projects = rows[0].values.map(v => row({
-    id: v[0], title: v[1], summary: v[2], genre: v[5], status: v[6],
-    createdAt: v[7], updatedAt: v[8],
+  const db = getDb();
+  const rows = db.select().from(projects).orderBy(sql`updated_at DESC`).all();
+  if (!rows.length) return '当前没有任何项目。';
+  const list = rows.map(v => row({
+    id: v.id, title: v.title, summary: v.summary, genre: v.genre, status: v.status,
+    createdAt: v.createdAt, updatedAt: v.updatedAt,
   }));
-  return JSON.stringify(projects, null, 2);
+  return toJson(list);
 }
 
 async function handleGetProject(args: { projectId: number }): Promise<string> {
-  const db = await getDb();
-  const rows = db.exec('SELECT * FROM projects WHERE id = ?', [args.projectId]);
-  if (!rows.length || !rows[0].values.length) return `项目 ${args.projectId} 不存在。`;
-  const v = rows[0].values[0];
-  return JSON.stringify(row({
-    id: v[0], title: v[1], summary: v[2], genre: v[5], status: v[6],
-    createdAt: v[7], updatedAt: v[8],
-  }), null, 2);
+  const db = getDb();
+  const v = db.select().from(projects).where(eq(projects.id, args.projectId)).get();
+  if (!v) return `项目 ${args.projectId} 不存在。`;
+  return toJson(row({
+    id: v.id, title: v.title, summary: v.summary, genre: v.genre, status: v.status,
+    createdAt: v.createdAt, updatedAt: v.updatedAt,
+  }));
 }
 
 // ── 章节 ──
 
 async function handleListChapters(args: { projectId: number }): Promise<string> {
-  const db = await getDb();
-  const rows = db.exec('SELECT id, title, order_num, word_count, status, created_at, updated_at FROM chapters WHERE project_id = ? ORDER BY order_num', [args.projectId]);
-  if (!rows.length || !rows[0].values.length) return '该项目暂无章节。';
-  const chapters = rows[0].values.map(v => row({
-    id: v[0], title: v[1], orderNum: v[2], wordCount: v[3], status: v[4],
-    createdAt: v[5], updatedAt: v[6],
-  }));
-  return JSON.stringify(chapters, null, 2);
+  const db = getDb();
+  const rows = db
+    .select({ id: chapters.id, title: chapters.title, orderNum: chapters.orderNum, wordCount: chapters.wordCount, status: chapters.status, createdAt: chapters.createdAt, updatedAt: chapters.updatedAt })
+    .from(chapters)
+    .where(eq(chapters.projectId, args.projectId))
+    .orderBy(sql`order_num`)
+    .all();
+  if (!rows.length) return '该项目暂无章节。';
+  return toJson(rows.map(v => row(v)));
 }
 
 async function handleGetChapter(args: { projectId: number; chapterId: number }): Promise<string> {
-  const db = await getDb();
-  const rows = db.exec('SELECT * FROM chapters WHERE id = ? AND project_id = ?', [args.chapterId, args.projectId]);
-  if (!rows.length || !rows[0].values.length) return `章节 ${args.chapterId} 不存在。`;
-  const v = rows[0].values[0];
-  return JSON.stringify(row({
-    id: v[0], projectId: v[1], title: v[2], content: v[3], orderNum: v[4],
-    wordCount: v[5], status: v[6], createdAt: v[7], updatedAt: v[8],
-  }), null, 2);
+  const db = getDb();
+  const v = db.select().from(chapters).where(and(eq(chapters.id, args.chapterId), eq(chapters.projectId, args.projectId))).get();
+  if (!v) return `章节 ${args.chapterId} 不存在。`;
+  return toJson(row(v));
 }
 
 async function handleCreateChapter(args: { projectId: number; title: string; content: string; orderNum?: number }): Promise<string> {
-  const db = await getDb();
-  const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+  const db = getDb();
+  const now = new Date().toISOString();
   const wordCount = args.content.replace(/[#*`\-\s]/g, '').length;
-  const orderNum = args.orderNum ?? 0;
-  db.run(
-    'INSERT INTO chapters (project_id, title, content, order_num, word_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [args.projectId, args.title, args.content, orderNum, wordCount, now, now],
-  );
-  const id = (db.exec('SELECT last_insert_rowid()')[0].values[0] as any[])[0] as number;
-  saveDb();
-  return JSON.stringify({ success: true, id, title: args.title, wordCount }, null, 2);
+  const result = db.insert(chapters).values({
+    projectId: args.projectId,
+    title: args.title,
+    content: args.content,
+    orderNum: args.orderNum ?? 0,
+    wordCount,
+    createdAt: now,
+    updatedAt: now,
+  } as any).returning().get();
+  return toJson({ success: true, id: result.id, title: args.title, wordCount });
 }
 
 async function handleUpdateChapter(args: { projectId: number; chapterId: number; title?: string; content?: string }): Promise<string> {
-  const db = await getDb();
-  const updates: string[] = [];
-  const params: any[] = [];
-  const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
-  if (args.title !== undefined) { updates.push('title = ?'); params.push(args.title); }
+  const db = getDb();
+  const updateData: any = { updatedAt: new Date().toISOString() };
+  if (args.title !== undefined) updateData.title = args.title;
   if (args.content !== undefined) {
-    updates.push('content = ?');
-    params.push(args.content);
-    const wc = args.content.replace(/[#*`\-\s]/g, '').length;
-    updates.push('word_count = ?');
-    params.push(wc);
+    updateData.content = args.content;
+    updateData.wordCount = args.content.replace(/[#*`\-\s]/g, '').length;
   }
-  if (!updates.length) return '没有需要更新的字段。';
-  updates.push('updated_at = ?');
-  params.push(now);
-  params.push(args.chapterId, args.projectId);
-  db.run(`UPDATE chapters SET ${updates.join(', ')} WHERE id = ? AND project_id = ?`, params);
-  saveDb();
-  return JSON.stringify({ success: true, chapterId: args.chapterId }, null, 2);
+  if (Object.keys(updateData).length === 1) return '没有需要更新的字段。';
+  db.update(chapters)
+    .set(updateData)
+    .where(and(eq(chapters.id, args.chapterId), eq(chapters.projectId, args.projectId)))
+    .run();
+  return toJson({ success: true, chapterId: args.chapterId });
 }
 
 // ── 大纲 ──
 
 async function handleListOutlines(args: { projectId: number }): Promise<string> {
-  const db = await getDb();
-  const rows = db.exec('SELECT id, title, description, parent_id, chapter_id, sort_order, level, status FROM outline_items WHERE project_id = ? ORDER BY sort_order', [args.projectId]);
-  if (!rows.length || !rows[0].values.length) return '该项目暂无大纲。';
-  const outlines = rows[0].values.map(v => row({
-    id: v[0], title: v[1], description: v[2], parentId: v[3], chapterId: v[4],
-    sortOrder: v[5], level: v[6], status: v[7],
-  }));
-  return JSON.stringify(outlines, null, 2);
+  const db = getDb();
+  const rows = db
+    .select({ id: outlineItems.id, title: outlineItems.title, description: outlineItems.description, parentId: outlineItems.parentId, chapterId: outlineItems.chapterId, sortOrder: outlineItems.sortOrder, level: outlineItems.level, status: outlineItems.status })
+    .from(outlineItems)
+    .where(eq(outlineItems.projectId, args.projectId))
+    .orderBy(sql`sort_order`)
+    .all();
+  if (!rows.length) return '该项目暂无大纲。';
+  return toJson(rows.map(v => row(v)));
 }
 
 async function handleCreateOutline(args: { projectId: number; title: string; description?: string; parentId?: number; chapterId?: number; level?: number }): Promise<string> {
-  const db = await getDb();
-  const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
-  const lvl = args.level ?? 0;
-  db.run(
-    'INSERT INTO outline_items (project_id, title, description, parent_id, chapter_id, level, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [args.projectId, args.title, args.description || '', args.parentId || null, args.chapterId || null, lvl, now, now],
-  );
-  const id = (db.exec('SELECT last_insert_rowid()')[0].values[0] as any[])[0] as number;
-  saveDb();
-  return JSON.stringify({ success: true, id, title: args.title, level: lvl }, null, 2);
+  const db = getDb();
+  const now = new Date().toISOString();
+  const result = db.insert(outlineItems).values({
+    projectId: args.projectId,
+    title: args.title,
+    description: args.description || '',
+    parentId: args.parentId ?? null,
+    chapterId: args.chapterId ?? null,
+    level: args.level ?? 0,
+    createdAt: now,
+    updatedAt: now,
+  } as any).returning().get();
+  return toJson({ success: true, id: result.id, title: args.title, level: args.level ?? 0 });
 }
 
 async function handleUpdateOutline(args: { projectId: number; outlineId: number; title?: string; description?: string }): Promise<string> {
-  const db = await getDb();
-  const updates: string[] = [];
-  const params: any[] = [];
-  const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
-  if (args.title !== undefined) { updates.push('title = ?'); params.push(args.title); }
-  if (args.description !== undefined) { updates.push('description = ?'); params.push(args.description); }
-  if (!updates.length) return '没有需要更新的字段。';
-  updates.push('updated_at = ?');
-  params.push(now);
-  params.push(args.outlineId, args.projectId);
-  db.run(`UPDATE outline_items SET ${updates.join(', ')} WHERE id = ? AND project_id = ?`, params);
-  saveDb();
-  return JSON.stringify({ success: true, outlineId: args.outlineId }, null, 2);
+  const db = getDb();
+  const updateData: any = { updatedAt: new Date().toISOString() };
+  if (args.title !== undefined) updateData.title = args.title;
+  if (args.description !== undefined) updateData.description = args.description;
+  if (Object.keys(updateData).length === 1) return '没有需要更新的字段。';
+  db.update(outlineItems)
+    .set(updateData)
+    .where(and(eq(outlineItems.id, args.outlineId), eq(outlineItems.projectId, args.projectId)))
+    .run();
+  return toJson({ success: true, outlineId: args.outlineId });
 }
 
 // ── 世界观 ──
 
 async function handleListWorldbuilding(args: { projectId: number; category?: string }): Promise<string> {
-  const db = await getDb();
+  const db = getDb();
   let rows;
   if (args.category) {
-    rows = db.exec('SELECT id, title, category, sort_order, created_at FROM worldbuilding_items WHERE project_id = ? AND category = ? ORDER BY sort_order', [args.projectId, args.category]);
+    rows = db
+      .select({ id: worldbuildingItems.id, title: worldbuildingItems.title, category: worldbuildingItems.category, sortOrder: worldbuildingItems.sortOrder, createdAt: worldbuildingItems.createdAt })
+      .from(worldbuildingItems)
+      .where(and(eq(worldbuildingItems.projectId, args.projectId), eq(worldbuildingItems.category, args.category)))
+      .orderBy(sql`sort_order`)
+      .all();
   } else {
-    rows = db.exec('SELECT id, title, category, sort_order, created_at FROM worldbuilding_items WHERE project_id = ? ORDER BY sort_order', [args.projectId]);
+    rows = db
+      .select({ id: worldbuildingItems.id, title: worldbuildingItems.title, category: worldbuildingItems.category, sortOrder: worldbuildingItems.sortOrder, createdAt: worldbuildingItems.createdAt })
+      .from(worldbuildingItems)
+      .where(eq(worldbuildingItems.projectId, args.projectId))
+      .orderBy(sql`sort_order`)
+      .all();
   }
-  if (!rows.length || !rows[0].values.length) return '该项目暂无世界观条目。';
-  const items = rows[0].values.map(v => row({
-    id: v[0], title: v[1], category: v[2], sortOrder: v[3], createdAt: v[4],
-  }));
-  return JSON.stringify(items, null, 2);
+  if (!rows.length) return '该项目暂无世界观条目。';
+  return toJson(rows.map(v => row(v)));
 }
 
 async function handleCreateWorldbuilding(args: { projectId: number; title: string; content: string; category: string }): Promise<string> {
-  const db = await getDb();
-  const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
-  db.run(
-    'INSERT INTO worldbuilding_items (project_id, title, content, category, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-    [args.projectId, args.title, args.content, args.category, now, now],
-  );
-  const id = (db.exec('SELECT last_insert_rowid()')[0].values[0] as any[])[0] as number;
-  saveDb();
-  return JSON.stringify({ success: true, id, title: args.title, category: args.category }, null, 2);
+  const db = getDb();
+  const now = new Date().toISOString();
+  const result = db.insert(worldbuildingItems).values({
+    projectId: args.projectId,
+    title: args.title,
+    content: args.content,
+    category: args.category,
+    createdAt: now,
+    updatedAt: now,
+  } as any).returning().get();
+  return toJson({ success: true, id: result.id, title: args.title, category: args.category });
 }
 
 async function handleUpdateWorldbuilding(args: { projectId: number; itemId: number; title?: string; content?: string; category?: string }): Promise<string> {
-  const db = await getDb();
-  const updates: string[] = [];
-  const params: any[] = [];
-  const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
-  if (args.title !== undefined) { updates.push('title = ?'); params.push(args.title); }
-  if (args.content !== undefined) { updates.push('content = ?'); params.push(args.content); }
-  if (args.category !== undefined) { updates.push('category = ?'); params.push(args.category); }
-  if (!updates.length) return '没有需要更新的字段。';
-  updates.push('updated_at = ?');
-  params.push(now);
-  params.push(args.itemId, args.projectId);
-  db.run(`UPDATE worldbuilding_items SET ${updates.join(', ')} WHERE id = ? AND project_id = ?`, params);
-  saveDb();
-  return JSON.stringify({ success: true, itemId: args.itemId }, null, 2);
+  const db = getDb();
+  const updateData: any = { updatedAt: new Date().toISOString() };
+  if (args.title !== undefined) updateData.title = args.title;
+  if (args.content !== undefined) updateData.content = args.content;
+  if (args.category !== undefined) updateData.category = args.category;
+  if (Object.keys(updateData).length === 1) return '没有需要更新的字段。';
+  db.update(worldbuildingItems)
+    .set(updateData)
+    .where(and(eq(worldbuildingItems.id, args.itemId), eq(worldbuildingItems.projectId, args.projectId)))
+    .run();
+  return toJson({ success: true, itemId: args.itemId });
 }
 
 // ── 角色 ──
 
 async function handleListCharacters(args: { projectId: number }): Promise<string> {
-  const db = await getDb();
-  const rows = db.exec('SELECT id, name, role, gender, age FROM characters WHERE project_id = ?', [args.projectId]);
-  if (!rows.length || !rows[0].values.length) return '该项目暂无角色。';
-  const chars = rows[0].values.map(v => row({
-    id: v[0], name: v[1], role: v[2], gender: v[3], age: v[4],
-  }));
-  return JSON.stringify(chars, null, 2);
+  const db = getDb();
+  const rows = db
+    .select({ id: characters.id, name: characters.name, role: characters.role, gender: characters.gender, age: characters.age })
+    .from(characters)
+    .where(eq(characters.projectId, args.projectId))
+    .all();
+  if (!rows.length) return '该项目暂无角色。';
+  return toJson(rows.map(v => row(v)));
 }
 
 async function handleGetCharacter(args: { projectId: number; characterId: number }): Promise<string> {
-  const db = await getDb();
-  const rows = db.exec('SELECT * FROM characters WHERE id = ? AND project_id = ?', [args.characterId, args.projectId]);
-  if (!rows.length || !rows[0].values.length) return `角色 ${args.characterId} 不存在。`;
-  const v = rows[0].values[0];
-  return JSON.stringify(row({
-    id: v[0], projectId: v[1], name: v[2], role: v[3], gender: v[4],
-    age: v[5], appearance: v[6], personality: v[7], background: v[8],
-  }), null, 2);
+  const db = getDb();
+  const v = db.select().from(characters).where(and(eq(characters.id, args.characterId), eq(characters.projectId, args.projectId))).get();
+  if (!v) return `角色 ${args.characterId} 不存在。`;
+  return toJson(row(v));
 }
 
 async function handleCreateCharacter(args: { projectId: number; name: string; role: string; gender?: string; age?: number; appearance?: string; personality?: string; background?: string }): Promise<string> {
-  const db = await getDb();
-  const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
-  db.run(
-    'INSERT INTO characters (project_id, name, role, gender, age, appearance, personality, background, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [args.projectId, args.name, args.role, args.gender || '', args.age || null, args.appearance || '', args.personality || '', args.background || '', now, now],
-  );
-  const id = (db.exec('SELECT last_insert_rowid()')[0].values[0] as any[])[0] as number;
-  saveDb();
-  return JSON.stringify({ success: true, id, name: args.name, role: args.role }, null, 2);
+  const db = getDb();
+  const now = new Date().toISOString();
+  const result = db.insert(characters).values({
+    projectId: args.projectId,
+    name: args.name,
+    role: args.role,
+    gender: args.gender || '',
+    age: args.age ?? null,
+    appearance: args.appearance || '',
+    personality: args.personality || '',
+    background: args.background || '',
+    createdAt: now,
+    updatedAt: now,
+  } as any).returning().get();
+  return toJson({ success: true, id: result.id, name: args.name, role: args.role });
 }
 
 // ── 星图 ──
 
 async function handleListStarchart(args: { projectId: number }): Promise<string> {
-  const db = await getDb();
-  const nodes = db.exec('SELECT id, entity_type, entity_id, name, x, y, color, description FROM star_map_nodes WHERE project_id = ?', [args.projectId]);
-  const edges = db.exec('SELECT id, source_node_id, target_node_id, relation_type, label, description FROM star_map_edges WHERE project_id = ?', [args.projectId]);
-  const nodeList = nodes.length ? nodes[0].values.map(v => row({
-    id: v[0], entityType: v[1], entityId: v[2], name: v[3], x: v[4], y: v[5], color: v[6], description: v[7],
-  })) : [];
-  const edgeList = edges.length ? edges[0].values.map(v => row({
-    id: v[0], sourceNodeId: v[1], targetNodeId: v[2], relationType: v[3], label: v[4], description: v[5],
-  })) : [];
-  return JSON.stringify({ nodes: nodeList, edges: edgeList }, null, 2);
+  const db = getDb();
+  const nodes = db
+    .select({ id: starMapNodes.id, entityType: starMapNodes.entityType, entityId: starMapNodes.entityId, name: starMapNodes.name, x: starMapNodes.x, y: starMapNodes.y, color: starMapNodes.color, description: starMapNodes.description })
+    .from(starMapNodes)
+    .where(eq(starMapNodes.projectId, args.projectId))
+    .all();
+  const edges = db
+    .select({ id: starMapEdges.id, sourceNodeId: starMapEdges.sourceNodeId, targetNodeId: starMapEdges.targetNodeId, relationType: starMapEdges.relationType, label: starMapEdges.label, description: starMapEdges.description })
+    .from(starMapEdges)
+    .where(eq(starMapEdges.projectId, args.projectId))
+    .all();
+  return toJson({ nodes: nodes.map(v => row(v)), edges: edges.map(v => row(v)) });
 }
 
 async function handleCreateStarchartNode(args: { projectId: number; name: string; entityType: string; description?: string; entityId?: number; color?: string }): Promise<string> {
-  const db = await getDb();
-  const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+  const db = getDb();
+  const now = new Date().toISOString();
   const x = Math.random() * 200 - 100;
   const y = Math.random() * 200 - 100;
-  db.run(
-    'INSERT INTO star_map_nodes (project_id, entity_type, entity_id, name, x, y, color, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [args.projectId, args.entityType, args.entityId || null, args.name, x, y, args.color || '#c9a96e', args.description || '', now, now],
-  );
-  const id = (db.exec('SELECT last_insert_rowid()')[0].values[0] as any[])[0] as number;
-  saveDb();
-  return JSON.stringify({ success: true, id, name: args.name, entityType: args.entityType }, null, 2);
+  const result = db.insert(starMapNodes).values({
+    projectId: args.projectId,
+    entityType: args.entityType as any,
+    entityId: args.entityId ?? null,
+    name: args.name,
+    x,
+    y,
+    color: args.color || '#c9a96e',
+    description: args.description || '',
+    createdAt: now,
+    updatedAt: now,
+  } as any).returning().get();
+  return toJson({ success: true, id: result.id, name: args.name, entityType: args.entityType });
 }
 
 async function handleCreateStarchartEdge(args: { projectId: number; sourceNodeId: number; targetNodeId: number; relationType: string; label?: string; description?: string }): Promise<string> {
-  const db = await getDb();
-  const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
-  db.run(
-    'INSERT INTO star_map_edges (project_id, source_node_id, target_node_id, relation_type, label, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [args.projectId, args.sourceNodeId, args.targetNodeId, args.relationType, args.label || '', args.description || '', now, now],
-  );
-  const id = (db.exec('SELECT last_insert_rowid()')[0].values[0] as any[])[0] as number;
-  saveDb();
-  return JSON.stringify({ success: true, id, relationType: args.relationType }, null, 2);
+  const db = getDb();
+  const now = new Date().toISOString();
+  const result = db.insert(starMapEdges).values({
+    projectId: args.projectId,
+    sourceNodeId: args.sourceNodeId,
+    targetNodeId: args.targetNodeId,
+    relationType: args.relationType,
+    label: args.label || '',
+    description: args.description || '',
+    createdAt: now,
+    updatedAt: now,
+  } as any).returning().get();
+  return toJson({ success: true, id: result.id, relationType: args.relationType });
 }
 
 // ── 时间轴 ──
 
 async function handleListTimeline(args: { projectId: number }): Promise<string> {
-  const db = await getDb();
-  const rows = db.exec('SELECT id, title, content, event_date, sort_order, category FROM timeline_events WHERE project_id = ? ORDER BY sort_order', [args.projectId]);
-  if (!rows.length || !rows[0].values.length) return '该项目暂无时间轴事件。';
-  const events = rows[0].values.map(v => row({
-    id: v[0], title: v[1], content: v[2], eventDate: v[3], sortOrder: v[4], category: v[5],
-  }));
-  return JSON.stringify(events, null, 2);
+  const db = getDb();
+  const rows = db
+    .select({ id: timelineEvents.id, title: timelineEvents.title, content: timelineEvents.content, eventDate: timelineEvents.eventDate, sortOrder: timelineEvents.sortOrder, category: timelineEvents.category })
+    .from(timelineEvents)
+    .where(eq(timelineEvents.projectId, args.projectId))
+    .orderBy(sql`sort_order`)
+    .all();
+  if (!rows.length) return '该项目暂无时间轴事件。';
+  return toJson(rows.map(v => row(v)));
 }
 
 async function handleCreateTimelineEvent(args: { projectId: number; title: string; content?: string; eventDate?: string; category?: string }): Promise<string> {
-  const db = await getDb();
-  const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
-  const maxOrder = db.exec('SELECT COALESCE(MAX(sort_order), 0) FROM timeline_events WHERE project_id = ?', [args.projectId]);
-  const sortOrder = (Number(maxOrder[0]?.values[0]?.[0]) || 0) + 1;
-  db.run(
-    'INSERT INTO timeline_events (project_id, title, content, event_date, sort_order, category, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [args.projectId, args.title, args.content || '', args.eventDate || '', sortOrder, args.category || '', now, now],
-  );
-  const id = (db.exec('SELECT last_insert_rowid()')[0].values[0] as any[])[0] as number;
-  saveDb();
-  return JSON.stringify({ success: true, id, title: args.title, sortOrder }, null, 2);
+  const db = getDb();
+  const now = new Date().toISOString();
+  const maxOrder = db
+    .select({ m: sql<number>`COALESCE(MAX(sort_order), 0)` })
+    .from(timelineEvents)
+    .where(eq(timelineEvents.projectId, args.projectId))
+    .get();
+  const sortOrder = (Number(maxOrder?.m) || 0) + 1;
+  const result = db.insert(timelineEvents).values({
+    projectId: args.projectId,
+    title: args.title,
+    content: args.content || '',
+    eventDate: args.eventDate || '',
+    sortOrder,
+    category: args.category || '',
+    createdAt: now,
+    updatedAt: now,
+  } as any).returning().get();
+  return toJson({ success: true, id: result.id, title: args.title, sortOrder });
 }
 
 // ─── Handler Map ─────────────────────────────────────────────────────────────

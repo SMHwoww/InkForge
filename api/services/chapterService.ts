@@ -1,4 +1,6 @@
-import { getDb, saveDb } from '../db/index.js';
+import { getDb } from '../db/index.js';
+import { chapters } from '../db/schema.js';
+import { eq, and, sql } from 'drizzle-orm';
 
 export interface Chapter {
   id: number;
@@ -13,61 +15,37 @@ export interface Chapter {
 }
 
 export async function getChapters(projectId: number): Promise<Chapter[]> {
-  const db = await getDb();
-  const rows = db.exec(
-    `SELECT * FROM chapters WHERE project_id = ? ORDER BY order_num, id`,
-    [projectId],
-  );
-  if (!rows.length) return [];
-  return rows[0].values.map((row: any[]) => ({
-    id: Number(row[0]),
-    projectId: Number(row[1]),
-    title: String(row[2]),
-    content: String(row[3]),
-    orderNum: Number(row[4]),
-    wordCount: Number(row[5]),
-    status: String(row[6]),
-    createdAt: String(row[7]),
-    updatedAt: String(row[8]),
-  }));
+  const db = getDb();
+  return db
+    .select()
+    .from(chapters)
+    .where(eq(chapters.projectId, projectId))
+    .orderBy(sql`order_num, id`)
+    .all() as Chapter[];
 }
 
 export async function getChapter(projectId: number, chapterId: number): Promise<Chapter | null> {
-  const db = await getDb();
-  const rows = db.exec(
-    `SELECT * FROM chapters WHERE id = ? AND project_id = ?`,
-    [chapterId, projectId],
-  );
-  if (!rows.length || !rows[0].values.length) return null;
-  const row = rows[0].values[0];
-  return {
-    id: Number(row[0]), projectId: Number(row[1]), title: String(row[2]), content: String(row[3]),
-    orderNum: Number(row[4]), wordCount: Number(row[5]), status: String(row[6]),
-    createdAt: String(row[7]), updatedAt: String(row[8]),
-  };
+  const db = getDb();
+  return db
+    .select()
+    .from(chapters)
+    .where(and(eq(chapters.id, chapterId), eq(chapters.projectId, projectId)))
+    .get() as Chapter ?? null;
 }
 
 export async function createChapter(
   projectId: number,
   data: { title: string; content?: string; orderNum?: number },
 ): Promise<Chapter> {
-  const db = await getDb();
-  const orderNum = data.orderNum ?? 0;
+  const db = getDb();
   const wordCount = (data.content || '').replace(/\s/g, '').length;
-  db.run(
-    `INSERT INTO chapters (project_id, title, content, order_num, word_count) VALUES (?, ?, ?, ?, ?)`,
-    [projectId, data.title, data.content || '', orderNum, wordCount],
-  );
-  const rows = db.exec(
-    `SELECT * FROM chapters WHERE id = last_insert_rowid()`,
-  );
-  saveDb();
-  const row = rows[0].values[0];
-  return {
-    id: Number(row[0]), projectId: Number(row[1]), title: String(row[2]), content: String(row[3]),
-    orderNum: Number(row[4]), wordCount: Number(row[5]), status: String(row[6]),
-    createdAt: String(row[7]), updatedAt: String(row[8]),
-  };
+  return db.insert(chapters).values({
+    projectId,
+    title: data.title,
+    content: data.content || '',
+    orderNum: data.orderNum ?? 0,
+    wordCount,
+  } as any).returning().get() as Chapter;
 }
 
 export async function updateChapter(
@@ -75,7 +53,7 @@ export async function updateChapter(
   chapterId: number,
   data: { title?: string; content?: string; orderNum?: number; status?: string },
 ): Promise<Chapter | null> {
-  const db = await getDb();
+  const db = getDb();
   const existing = await getChapter(projectId, chapterId);
   if (!existing) return null;
 
@@ -85,17 +63,18 @@ export async function updateChapter(
   const status = data.status ?? existing.status;
   const wordCount = content.replace(/\s/g, '').length;
 
-  db.run(
-    `UPDATE chapters SET title = ?, content = ?, order_num = ?, word_count = ?, status = ?, updated_at = datetime('now', 'localtime') WHERE id = ? AND project_id = ?`,
-    [title, content, orderNum, wordCount, status, chapterId, projectId],
-  );
-  saveDb();
+  db.update(chapters)
+    .set({ title, content, orderNum, wordCount, status, updatedAt: new Date().toISOString() } as any)
+    .where(and(eq(chapters.id, chapterId), eq(chapters.projectId, projectId)))
+    .run();
+
   return getChapter(projectId, chapterId);
 }
 
 export async function deleteChapter(projectId: number, chapterId: number): Promise<boolean> {
-  const db = await getDb();
-  db.run(`DELETE FROM chapters WHERE id = ? AND project_id = ?`, [chapterId, projectId]);
-  saveDb();
+  const db = getDb();
+  db.delete(chapters)
+    .where(and(eq(chapters.id, chapterId), eq(chapters.projectId, projectId)))
+    .run();
   return true;
 }

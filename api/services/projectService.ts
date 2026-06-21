@@ -1,79 +1,70 @@
-import { getDb, saveDb } from '../db/index.js';
+import { getDb } from '../db/index.js';
+import { projects, characters, worldbuildingItems } from '../db/schema.js';
+import { eq, sql, count } from 'drizzle-orm';
 
 export async function getProjectList() {
-  const db = await getDb();
-  const rows = db.exec(`
-    SELECT p.*, (SELECT COUNT(*) FROM characters WHERE project_id = p.id) as character_count
-    FROM projects p ORDER BY p.updated_at DESC
-  `);
-  if (!rows.length) return [];
-  return rows[0].values.map(row => ({
-    id: row[0],
-    title: row[1],
-    summary: row[2],
-    coverUrl: row[3],
-    genre: row[4],
-    status: row[5],
-    characterCount: row[8],
-    createdAt: row[6],
-    updatedAt: row[7],
-  }));
+  const db = getDb();
+  const rows = db
+    .select({
+      id: projects.id,
+      title: projects.title,
+      summary: projects.summary,
+      coverUrl: projects.coverUrl,
+      genre: projects.genre,
+      status: projects.status,
+      createdAt: projects.createdAt,
+      updatedAt: projects.updatedAt,
+      characterCount: sql<number>`(SELECT COUNT(*) FROM characters WHERE project_id = projects.id)`.as('character_count'),
+    })
+    .from(projects)
+    .orderBy(sql`projects.updated_at DESC`)
+    .all();
+  return rows;
 }
 
 export async function getProject(id: number) {
-  const db = await getDb();
-  const rows = db.exec(`SELECT * FROM projects WHERE id = ?`, [id]);
-  if (!rows.length || !rows[0].values.length) return null;
-  const row = rows[0].values[0];
-  const wbCount = db.exec(`SELECT COUNT(*) FROM worldbuilding_items WHERE project_id = ?`, [id]);
-  const wbTotal = wbCount[0]?.values[0]?.[0] || 0;
+  const db = getDb();
+  const row = db.select().from(projects).where(eq(projects.id, id)).get();
+  if (!row) return null;
+  const wbCount = db.select({ count: count() }).from(worldbuildingItems).where(eq(worldbuildingItems.projectId, id)).get();
   return {
-    id: row[0], title: row[1], summary: row[2], coverUrl: row[3],
-    genre: row[4], status: row[5], createdAt: row[6], updatedAt: row[7],
-    worldbuildingCount: wbTotal,
+    ...row,
+    worldbuildingCount: wbCount?.count ?? 0,
   };
 }
 
 export async function createProject(data: { title: string; summary?: string; genre?: string }) {
-  const db = await getDb();
+  const db = getDb();
   const now = new Date().toISOString();
-  db.run(
-    `INSERT INTO projects (title, summary, genre, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-    [data.title, data.summary || '', data.genre || '', now, now],
-  );
-  // 先获取 ID 再查询，避免 last_insert_rowid() 内联在复杂查询中不可靠
-  const idResult = db.exec('SELECT last_insert_rowid()');
-  const id = idResult[0].values[0][0] as number;
-  const rows = db.exec(`SELECT *, (SELECT COUNT(*) FROM characters WHERE project_id = ?) as character_count FROM projects WHERE id = ?`, [id, id]);
-  if (!rows.length || !rows[0].values.length) return null;
-  const row = rows[0].values[0];
-  saveDb();
+  const result = db.insert(projects).values({
+    title: data.title,
+    summary: data.summary || '',
+    genre: data.genre || '',
+    createdAt: now,
+    updatedAt: now,
+  } as any).returning().get();
   return {
-    id: row[0], title: row[1], summary: row[2], coverUrl: row[3],
-    genre: row[4], status: row[5], createdAt: row[6], updatedAt: row[7],
-    characterCount: row[8], worldbuildingCount: 0,
+    ...result,
+    characterCount: 0,
+    worldbuildingCount: 0,
   };
 }
 
 export async function updateProject(id: number, data: Partial<{ title: string; summary: string; coverUrl: string; genre: string; status: string }>) {
-  const db = await getDb();
+  const db = getDb();
   const now = new Date().toISOString();
-  const sets: string[] = ['updated_at = ?'];
-  const values: any[] = [now];
-  for (const [key, val] of Object.entries(data)) {
-    const col = key === 'coverUrl' ? 'cover_url' : key;
-    sets.push(`${col} = ?`);
-    values.push(val);
-  }
-  values.push(id);
-  db.run(`UPDATE projects SET ${sets.join(', ')} WHERE id = ?`, values);
-  saveDb();
+  const updateData: any = { updatedAt: now };
+  if (data.title !== undefined) updateData.title = data.title;
+  if (data.summary !== undefined) updateData.summary = data.summary;
+  if (data.coverUrl !== undefined) updateData.coverUrl = data.coverUrl;
+  if (data.genre !== undefined) updateData.genre = data.genre;
+  if (data.status !== undefined) updateData.status = data.status;
+  db.update(projects).set(updateData).where(eq(projects.id, id)).run();
   return getProject(id);
 }
 
 export async function deleteProject(id: number) {
-  const db = await getDb();
-  db.run('DELETE FROM projects WHERE id = ?', [id]);
-  saveDb();
+  const db = getDb();
+  db.delete(projects).where(eq(projects.id, id)).run();
   return { success: true };
 }

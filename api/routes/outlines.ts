@@ -1,83 +1,36 @@
 import { Router } from 'express';
 import * as outlineService from '../services/outlineService.js';
+import { validateRequest } from '../middlewares/validateRequest.js';
+import { asyncHandler } from '../common/asyncHandler.js';
+import { NotFoundError } from '../common/errors.js';
+import { projectIdParam, projectIdAndItemIdParam, createOutlineBody, updateOutlineBody, reorderOutlinesBody } from '../schemas/index.js';
 
 const router = Router({ mergeParams: true });
 
-// Get all outline items for a project (tree structure)
-router.get('/', async (req, res) => {
-  try {
-    const projectId = Number((req.params as any).projectId);
-    const outlines = await outlineService.getOutlineItems(projectId);
-    res.json({ code: 0, data: outlines, message: 'ok' });
-  } catch (e) {
-    console.error('Get outlines error:', e);
-    res.status(500).json({ code: 500, message: '获取大纲列表失败' });
-  }
-});
+router.get('/', validateRequest({ params: projectIdParam }), asyncHandler(async (req, res) => {
+  const outlines = await outlineService.getOutlineItems(Number(req.params.projectId));
+  res.json({ code: 0, data: outlines, message: 'ok' });
+}));
 
-// Create a new outline item
-router.post('/', async (req, res) => {
-  try {
-    const projectId = Number((req.params as any).projectId);
-    const { title, description, parentId, chapterId, level } = req.body;
-    if (!title) {
-      res.status(400).json({ code: 400, message: '大纲标题不能为空' });
-      return;
-    }
-    const item = await outlineService.createOutlineItem(projectId, { title, description, parentId, chapterId, level });
-    res.json({ code: 0, data: item, message: '创建成功' });
-  } catch (e) {
-    console.error('Create outline error:', e);
-    res.status(500).json({ code: 500, message: '创建大纲条目失败' });
-  }
-});
+router.post('/', validateRequest({ params: projectIdParam, body: createOutlineBody }), asyncHandler(async (req, res) => {
+  const item = await outlineService.createOutlineItem(Number(req.params.projectId), req.body);
+  res.json({ code: 0, data: item, message: '创建成功' });
+}));
 
-// Update an outline item
-router.put('/:itemId', async (req, res) => {
-  try {
-    const projectId = Number((req.params as any).projectId);
-    const itemId = Number((req.params as any).itemId);
-    const { title, description, parentId, chapterId, sortOrder, level, status } = req.body;
-    const item = await outlineService.updateOutlineItem(projectId, itemId, { title, description, parentId, chapterId, sortOrder, level, status });
-    if (!item) {
-      res.status(404).json({ code: 404, message: '大纲条目不存在' });
-      return;
-    }
-    res.json({ code: 0, data: item, message: '保存成功' });
-  } catch (e) {
-    console.error('Update outline error:', e);
-    res.status(500).json({ code: 500, message: '更新大纲条目失败' });
-  }
-});
+router.put('/:itemId', validateRequest({ params: projectIdAndItemIdParam, body: updateOutlineBody }), asyncHandler(async (req, res) => {
+  const item = await outlineService.updateOutlineItem(Number(req.params.projectId), Number(req.params.itemId), req.body);
+  if (!item) throw new NotFoundError('大纲条目不存在');
+  res.json({ code: 0, data: item, message: '保存成功' });
+}));
 
-// Delete an outline item
-router.delete('/:itemId', async (req, res) => {
-  try {
-    const projectId = Number((req.params as any).projectId);
-    const itemId = Number((req.params as any).itemId);
-    await outlineService.deleteOutlineItem(projectId, itemId);
-    res.json({ code: 0, data: null, message: '删除成功' });
-  } catch (e) {
-    console.error('Delete outline error:', e);
-    res.status(500).json({ code: 500, message: '删除大纲条目失败' });
-  }
-});
+router.delete('/:itemId', validateRequest({ params: projectIdAndItemIdParam }), asyncHandler(async (req, res) => {
+  await outlineService.deleteOutlineItem(Number(req.params.projectId), Number(req.params.itemId));
+  res.json({ code: 0, data: null, message: '删除成功' });
+}));
 
-// Reorder outline items
-router.put('/reorder/batch', async (req, res) => {
-  try {
-    const projectId = Number((req.params as any).projectId);
-    const { items } = req.body;
-    if (!items || !Array.isArray(items)) {
-      res.status(400).json({ code: 400, message: '排序数据不能为空' });
-      return;
-    }
-    await outlineService.reorderOutlineItems(projectId, items);
-    res.json({ code: 0, data: null, message: '排序成功' });
-  } catch (e) {
-    console.error('Reorder outlines error:', e);
-    res.status(500).json({ code: 500, message: '排序失败' });
-  }
-});
+router.put('/reorder/batch', validateRequest({ params: projectIdParam, body: reorderOutlinesBody }), asyncHandler(async (req, res) => {
+  await outlineService.reorderOutlineItems(Number(req.params.projectId), req.body.items);
+  res.json({ code: 0, data: null, message: '排序成功' });
+}));
 
 export default router;

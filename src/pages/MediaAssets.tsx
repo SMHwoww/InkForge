@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import {
-  Plus, Trash2, Image as ImageIcon, Video, Music, Search,
+  Plus, Trash2, Image as ImageIcon, Video, Music,
   Grid3X3, ExternalLink, Copy, X, Eye, Loader2, Upload, Link,
 } from 'lucide-react';
 import { useToastStore } from '@/stores/toastStore';
@@ -31,7 +31,6 @@ export default function MediaAssets() {
 
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
   const [showAdd, setShowAdd] = useState(false);
   const [previewId, setPreviewId] = useState<number | null>(null);
@@ -132,9 +131,8 @@ export default function MediaAssets() {
   };
 
   const filtered = assets.filter(a => {
-    const matchSearch = !search || a.name.includes(search) || a.prompt.includes(search);
     const matchType = filterType === 'all' || a.type === filterType;
-    return matchSearch && matchType;
+    return matchType;
   });
 
   const previewAsset = previewId ? assets.find(a => a.id === previewId) : null;
@@ -165,15 +163,6 @@ export default function MediaAssets() {
 
       {/* Filters */}
       <div className="flex items-center gap-3 mb-6">
-        <div className="relative flex-1 max-w-xs">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#f5f0e8]/30" />
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="搜索名称或提示词..."
-            className="w-full bg-[#0f0f1a] border border-[#c9a96e]/20 rounded-lg pl-9 pr-3 py-2 text-sm text-[#f5f0e8] placeholder:text-[#f5f0e8]/30 focus:outline-none focus:border-[#c9a96e]/60"
-          />
-        </div>
         <div className="flex items-center gap-1 bg-[#0f0f1a] border border-[#c9a96e]/20 rounded-lg p-0.5">
           {(['all', 'image', 'video', 'audio'] as const).map(t => (
             <button
