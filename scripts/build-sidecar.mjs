@@ -2,7 +2,7 @@
  * 构建 Tauri Sidecar 后端可执行文件
  *
  * 流程：
- * 1. 使用 esbuild 将 api/ 目录打包为单个 CJS 文件（含内联 WASM）
+ * 1. 使用 esbuild 将 api/ 目录打包为单个 CJS 文件
  * 2. 使用 Node.js SEA (Single Executable Application) 编译为独立可执行文件
  * 3. 输出到 src-tauri/binaries/ 目录
  *
@@ -49,10 +49,6 @@ if (!fs.existsSync(outputDir)) {
 
 console.log('[1/3] 使用 esbuild 打包后端代码...');
 
-// 读取 sql.js WASM 文件并 Base64 编码，注入到构建中
-const wasmPath = path.join(rootDir, 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm');
-const wasmBase64 = fs.readFileSync(wasmPath).toString('base64');
-
 try {
   await build({
     entryPoints: [path.join(apiDir, 'server.ts')],
@@ -70,7 +66,6 @@ try {
     },
     define: {
       'INKFORGE_BUNDLED': 'true',
-      'INKFORGE_WASM_BASE64': JSON.stringify(wasmBase64),
       'process.env.NODE_ENV': JSON.stringify('production'),
     },
   });

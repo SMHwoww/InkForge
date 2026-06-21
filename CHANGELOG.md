@@ -1,9 +1,7 @@
-### feat: 添加设定集模块与相关功能
-
-- 新增media_assets数据库表与媒体资源API
-- 添加设定集页面支持上传/URL添加媒体文件
-- 在侧边栏和路由中新增设定集入口
-- 完善项目创建与各模块的错误处理
-- 修复worldbuilding/character等服务的数据库操作顺序
-- 新增文件下载服务与AI绘图结果快速存入设定集功能
-- 新增multer依赖与媒体静态文件服务
+### 合并 main 分支的重大后端重构：
+- 数据库引擎统一为 better-sqlite3 + Drizzle ORM (WAL 模式)
+- 引入全局错误中间件、Zod 请求验证、asyncHandler
+- 新增全局搜索功能 (API + UI)
+- 保留 Tauri 动态路径解析 (getDataDir/getDbPath)
+- 保留所有 Tauri 专属依赖和配置 (base: './', tauri scripts 等)
+- 更新 MERGE_PRIORITY.md 反映新架构

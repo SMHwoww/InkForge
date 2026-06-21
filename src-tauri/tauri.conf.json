@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "InkForge",
-  "version": "0.2.1",
+  "version": "0.4.0",
   "identifier": "com.inkforge.app",
   "build": {
     "frontendDist": "../dist",
