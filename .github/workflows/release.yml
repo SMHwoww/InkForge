@@ -50,7 +50,7 @@ jobs:
           - platform: 'ubuntu-22.04'
             args: ''
           - platform: 'windows-latest'
-            args: ''
+            args: '--bundles nsis'
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -74,11 +74,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
-
-      - name: Enable .NET Framework 3.5 (required by WiX v3)
-        if: matrix.platform == 'windows-latest'
-        run: DISM /Online /Enable-Feature /FeatureName:NetFx3 /All /Quiet /NoRestart
-        shell: pwsh
 
       - name: Download Sidecar
         uses: actions/download-artifact@v4
