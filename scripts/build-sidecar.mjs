@@ -47,7 +47,28 @@ if (!fs.existsSync(outputDir)) {
   fs.mkdirSync(outputDir, { recursive: true });
 }
 
-console.log('[1/3] 使用 esbuild 打包后端代码...');
+console.log('[1/4] 复制原生模块到 binaries/lib/ ...');
+
+// better-sqlite3 是原生 C++ 模块，Node.js SEA 的 embedderRequire 无法加载。
+// 解法：将模块复制到 binaries/lib/node_modules/，然后通过 createRequire
+// （在 SEA 中仍可访问文件系统模块）在运行时加载。
+const libDir = path.join(outputDir, 'lib', 'node_modules');
+const nativeModules = ['better-sqlite3', 'bindings', 'file-uri-to-path'];
+for (const mod of nativeModules) {
+  const src = path.join(rootDir, 'node_modules', mod);
+  const dest = path.join(libDir, mod);
+  if (fs.existsSync(src)) {
+    fs.cpSync(src, dest, { recursive: true });
+    console.log(`  -> 复制 ${mod} 到 ${dest}`);
+  } else {
+    console.warn(`  ⚠ 未找到 ${src}，跳过`);
+  }
+}
+
+// 为 createRequire 创建锚点文件（仅用于模块路径解析，无需实际内容）
+fs.writeFileSync(path.join(outputDir, 'lib', '_sea_loader.js'), '// anchor for createRequire\n');
+
+console.log('[2/4] 使用 esbuild 打包后端代码...');
 
 try {
   await build({
@@ -57,10 +78,8 @@ try {
     target: 'node22',
     format: 'cjs',
     outfile: bundlePath,
-    external: [
-      // better-sqlite3 是原生模块，不需要打包
-      'better-sqlite3',
-    ],
+    // better-sqlite3 不再作为 external —— 由下方的 nativeModulePlugin 拦截
+    external: [],
     loader: {
       '.ts': 'ts',
     },
@@ -68,6 +87,31 @@ try {
       'INKFORGE_BUNDLED': 'true',
       'process.env.NODE_ENV': JSON.stringify('production'),
     },
+    plugins: [
+      {
+        name: 'native-module-loader',
+        setup(build) {
+          // 拦截所有对 better-sqlite3 的 require/import
+          // 替换为 createRequire 加载器（兼容 Node.js SEA）
+          build.onResolve({ filter: /^better-sqlite3$/ }, (args) => ({
+            path: args.path,
+            namespace: 'native-module',
+          }));
+
+          build.onLoad({ filter: /.*/, namespace: 'native-module' }, () => ({
+            contents: `
+// SEA-compatible: 用 createRequire 从文件系统加载原生模块
+// embedderRequire 只能解析 built-in 模块，但 createRequire 可访问磁盘
+const { createRequire } = require('node:module');
+const path = require('path');
+const req = createRequire(path.join(path.dirname(process.execPath), 'lib', '_sea_loader.js'));
+module.exports = req('better-sqlite3');
+`,
+            loader: 'js',
+          }));
+        },
+      },
+    ],
   });
 
   console.log('  -> 打包完成:', bundlePath);
@@ -78,7 +122,7 @@ try {
 
 // 使用 Node.js SEA 创建独立可执行文件
 // 参考: https://nodejs.org/api/single-executable-applications.html
-console.log('[2/3] 生成 Node.js SEA blob...');
+console.log('[3/4] 生成 Node.js SEA blob...');
 
 const seaConfig = {
   main: bundlePath,
@@ -99,7 +143,7 @@ try {
   process.exit(1);
 }
 
-console.log('[3/3] 创建可执行文件...');
+console.log('[4/4] 创建可执行文件...');
 
 try {
   // 复制当前系统 Node.js 二进制文件

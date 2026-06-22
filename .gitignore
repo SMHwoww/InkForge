@@ -15,6 +15,7 @@ dist-ssr
 
 # Runtime config (contains API keys)
 config.json
+!src-tauri/binaries/config.json
 
 # Database
 data/
@@ -52,6 +53,9 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 
+# Tauri sidecar native modules (must be tracked for Tauri bundle resources)
+!src-tauri/binaries/lib/node_modules/
+!src-tauri/binaries/lib/node_modules/**
 # Tauri
 src-tauri/target/
 src-tauri/gen/

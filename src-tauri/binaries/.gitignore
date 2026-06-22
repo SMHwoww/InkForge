@@ -1,0 +1,12 @@
+# Built sidecar executable
+*.exe
+
+# Runtime data
+data/
+logs/
+media/
+
+# SEA temp files
+sea-config.json
+sea-prep.blob
+bundle.cjs

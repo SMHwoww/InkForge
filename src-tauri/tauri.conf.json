@@ -39,6 +39,9 @@
     "externalBin": [
       "binaries/inkforge-backend"
     ],
+    "resources": {
+      "binaries/lib/**/*": "lib/"
+    },
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }

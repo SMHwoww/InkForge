@@ -1,0 +1,23 @@
+{
+  "ai": {
+    "apiKey": "",
+    "baseUrl": "https://api.openai.com/v1",
+    "model": "gpt-4o-mini"
+  },
+  "image": {
+    "provider": "bailian",
+    "apiKey": "",
+    "baseUrl": "",
+    "model": "wan2.6-t2i",
+    "region": "beijing"
+  },
+  "mcp": {
+    "enabled": true,
+    "builtinEnabled": true,
+    "servers": []
+  },
+  "modules": {
+    "visible": {},
+    "order": []
+  }
+}
